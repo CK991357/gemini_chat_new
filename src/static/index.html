@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gemini 2.0 Flash Multimodal Live API Client</title>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0" />
+    <!-- 建议使用填充版本图标 -->
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@24,400,1,0" />
+    <!-- 新增：用于语音播放器图标 -->
+    <link rel="stylesheet" href="https://fonts.googleapis.com/icon?family=Material+Icons" />
+    <link rel="stylesheet" href="css/style.css">
+    <!-- 引入 MathJax 用于数学公式渲染 -->
+    <script type="text/javascript" id="MathJax-script" async
+      src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js">
+    </script>
+    <script>
+      MathJax = {
+        tex: {
+          inlineMath: [['$', '$'], ['\\(', '\\)']],
+          displayMath: [['$$', '$$'], ['\\[', '\\]']]
+        },
+        svg: {
+          fontCache: 'global'
+        }
+      };
+    </script>
+    <!-- 引入 marked.js 用于 Markdown 渲染 -->
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <!-- 引入 highlight.js 用于代码高亮 -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.7.0/styles/github-dark-dimmed.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.7.0/highlight.min.js"></script>
+    <!-- 新增：引入 pdf.js -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.11.338/pdf.min.js"></script>
+    <script>
+        // 设置 pdf.js worker 的路径
+        pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.11.338/pdf.worker.min.js`;
+    </script>
+</head>
+<body>
+    <div id="toast-container"></div>
+    <div class="app-container">
+        <!-- 顶部导航栏 -->
+        <nav class="app-nav">
+            <div class="mode-switcher">
+                <h1 class="app-title">Gemini Chat</h1>
+                <button id="translation-mode-button" class="mode-button material-symbols-outlined">translate</button>
+                <button id="chat-mode-button" class="mode-button material-symbols-outlined active">chat</button>
+                <button id="vision-mode-button" class="mode-button material-symbols-outlined">camera_enhance</button>
+            </div>
+            <div class="nav-tools">
+                <button id="new-chat-button" class="material-symbols-outlined">add_box</button>
+                <button id="toggle-config" class="material-symbols-outlined">settings</button>
+                <button id="toggle-log" class="material-symbols-outlined">description</button>
+                <button id="theme-toggle" class="material-symbols-outlined">light_mode</button>
+
+            <!-- 移动媒体控制按钮到这里 -->
+            <div class="media-controls">
+                <button id="mic-button" class="media-button material-symbols-outlined">mic</button>
+                <button id="camera-button" class="media-button material-symbols-outlined">videocam</button>
+                <button id="screen-button" class="media-button material-symbols-outlined">screen_share</button>
+                <!-- 移除翻转按钮 -->
+                 </div>
+            </div>
+        </nav>
+
+        <!-- 主容器：左右分栏 -->
+        <div class="main-container">
+            <!-- 左侧控制面板 -->
+            <aside class="control-panel">
+                <div class="settings-card">
+                    <h3>设置</h3>
+                    <div class="setting-item">
+                        <label for="api-key">API Key:</label>
+                        <input type="password" id="api-key" placeholder="Please Input Gemini API Key" />
+                    </div>
+                    <div class="setting-item">
+                        <label for="voice-select">声音:</label>
+                        <select id="voice-select">
+                            <option value="Puck">Puck (Male)</option>
+                            <option value="Charon">Charon (Male)</option>
+                            <option value="Fenrir">Fenrir (Male)</option>
+                            <option value="Kore">Kore (Female)</option>
+                            <option value="Aoede" selected>Aoede (Female)</option>
+                        </select>
+                    </div>
+                    <div class="setting-item">
+                        <label for="response-type-select">响应类型:</label>
+                        <select id="response-type-select">
+                            <option value="text">Text</option>
+                            <option value="audio" selected>Audio</option>
+                        </select>
+                    </div>
+                    <!-- 新增模型选择下拉菜单 -->
+                    <div class="setting-item">
+                        <label for="model-select">模型选择:</label>
+                        <select id="model-select">
+                            <option value="models/gemini-2.0-flash-exp">gemini-2.0-flash-exp</option>
+                            <option value="models/gemini-2.5-flash-preview-05-20" selected>gemini-2.5-flash-preview-05-20</option>
+                        </select>
+                    </div>
+                    <div class="setting-item">
+                        <label for="fps-input">视频 FPS:</label>
+                        <input type="number" id="fps-input" placeholder="Video FPS" value="1" min="1" max="30" step="1"/>
+                        <span class="fps-help">更高 FPS 需要更多网络带宽</span>
+                    </div>
+                    <div class="setting-item full-width">
+                        <label for="system-instruction">系统指令:</label>
+                        <textarea id="system-instruction" placeholder="Enter custom system instructions..." rows="6"></textarea>
+                    </div>
+                    <div class="button-group">
+                        <button id="apply-config" class="action-button">确认</button>
+                        <button id="connect-button" class="action-button primary">连接</button>
+                    </div>
+                    </div>
+            </aside>
+
+            <!-- 右侧主内容区 -->
+            <div class="content-area">
+                <!-- 模式切换选项卡 -->
+                <div class="mode-tabs">
+                    <button class="tab active" data-mode="text">📝 文字聊天</button>
+                    <!-- <button class="tab" data-mode="audio">🎙️ 音频聊天</button> 删除此行 -->
+                    <button class="tab" data-mode="log">📋 系统日志</button>
+                </div>
+
+                <section class="chat-container text-mode active">
+                  <div class="media-previews" id="media-previews">
+                    <div id="video-container" class="media-preview">
+                      <video id="preview" playsinline webkit-playsinline autoplay muted></video>
+                      <div class="video-controls">
+                        <button id="flip-camera" class="media-button material-symbols-outlined">flip_camera_ios</button>
+                        <button id="stop-video" class="close-button material-symbols-outlined">close</button>
+                      </div>
+                    </div>
+                    <div id="screen-preview-container" class="media-preview">
+                      <video id="screen-preview-element" playsinline webkit-playsinline autoplay muted></video>
+                      <button id="stop-screen-button" class="close-button material-symbols-outlined">close</button>
+                    </div>
+                  </div>
+                  
+                  <div class="message-history" id="message-history">
+                    <!-- 聊天消息动态插入 -->
+                  </div>
+
+                  <!-- 新增：文件附件预览容器 -->
+                  <div class="file-attachment-previews" id="file-attachment-previews">
+                      <!-- 附件预览将动态插入此处 -->
+                  </div>
+                  
+                  <!-- 输入区域保持不变 -->
+
+                    <div class="input-area">
+                        <textarea id="message-input" placeholder="输入消息..." rows="1"></textarea>
+                        <button id="send-button" class="send-button material-symbols-outlined">send</button>
+                        <button id="interrupt-button" class="action-button">||</button>
+                        <!-- 新增：附件按钮 -->
+                        <button id="attachment-button" class="action-button material-symbols-outlined">attach_file</button>
+                        <!-- 新增：聊天模式下的语音输入按钮 -->
+                        <button id="chat-voice-input-button" class="action-button material-symbols-outlined">mic</button>
+                        <input type="file" id="file-input" accept="image/jpeg,image/png,image/webp,application/pdf" style="display: none;">
+                    </div>
+                    
+                </section>
+
+                <!-- 系统日志区 (保持不变) -->
+                <section class="chat-container log-mode">
+                    <div class="log-header">
+                        <h3>系统日志</h3>
+                        <button id="clear-logs" class="action-button">清空</button>
+                    </div>
+                    <div class="log-content" id="logs-container">
+                        <!-- 原始日志内容将动态插入此处 -->
+                    </div>
+                </section>
+
+                <!-- 翻译功能区 -->
+                <section class="translation-container">
+                    <div class="translation-input-area">
+                        <div class="translation-controls">
+                            <select id="translation-input-language-select" title="选择输入语言"></select>
+                            <select id="translation-model-select" title="选择翻译模型">
+                                <option value="gemini-2.5-flash-lite-preview-06-17" selected>gemini-2.5-flash-lite-preview-06-17</option>
+                                <option value="THUDM/GLM-4-9B-0414">THUDM/GLM-4-9B-0414</option>
+                            </select>
+                        </div>
+                        <textarea id="translation-input-text" placeholder="输入要翻译的内容..." rows="10"></textarea>
+                        <div class="translation-action-buttons">
+                            <button id="translate-button" class="action-button">翻译</button>
+                            <!-- 新增：翻译模式下的语音输入按钮 -->
+                            <button id="translation-voice-input-button" class="action-button">语音输入</button>
+                        </div>
+                    </div>
+                    <div class="translation-output-area">
+                        <div class="translation-controls">
+                            <select id="translation-output-language-select" title="选择输出语言"></select>
+                        </div>
+                        <div id="translation-output-text" class="translation-output-display"></div>
+                        <button id="translation-copy-button" class="copy-button material-symbols-outlined">content_copy</button>
+                    </div>
+                </section>
+
+                <!-- 视觉模型功能区 -->
+                <section class="vision-container">
+                    <!-- Replicate the structure of the main chat container -->
+                    <div class="message-history" id="vision-message-history">
+                        <!-- Vision chat messages will be dynamically inserted here -->
+                    </div>
+
+                    <div class="file-attachment-previews" id="vision-attachment-previews">
+                        <!-- Attachment previews for vision mode will be dynamically inserted here -->
+                    </div>
+
+                    <div class="vision-controls">
+                        <label for="vision-model-select">模型:</label>
+                        <select id="vision-model-select"></select>
+                    </div>
+                    <div class="input-area" id="vision-input-area">
+                        <textarea id="vision-input-text" placeholder="输入描述或问题..." rows="1"></textarea>
+                        <button id="vision-attachment-button" class="action-button material-symbols-outlined">attach_file</button>
+                        <input type="file" id="vision-file-input" accept="image/*,video/*,application/pdf" style="display: none;" multiple>
+                        <button id="vision-send-button" class="send-button material-symbols-outlined">send</button>
+                    </div>
+                </section>
+
+            </div>
+        </div>
+
+    </div>
+    <script src="js/main.js" type="module"></script>
+</body>
+</html>

@@ -62,8 +62,6 @@
   }
   .app-title {
     font-size: 20px;
-    text-align: center;
-    margin-bottom: 10px;
   }
   .nav-tools {
     display: grid;
@@ -107,11 +105,16 @@
     font-size: 14px;
   }
   .message {
-    max-width: 90%;
+    max-width: 85%;
+    padding: 0 5px;
+  }
+  .message.ai {
+    margin-left: -5px;
   }
   .input-area {
     padding: 10px;
     gap: 8px;
+    padding-bottom: calc(15px + env(safe-area-inset-bottom)); /* 恢复安全区域边距 */
   }
   #message-input {
     font-size: 14px;
@@ -122,19 +125,21 @@
     font-size: 20px;
   }
   // Specific button sizes in chat input area for mobile
-  .input-area {
-    #send-button {
-      width: 32px;
-      height: 32px;
-      font-size: 16px;
-      border-radius: 8px;
-    }
+  .text-mode #message-input {
+    padding: 10px;
+  }
+  .text-mode .input-area {
+    padding-left: 0px;
+    padding-right: 10px;
+    gap: 5px;
+    flex-wrap: nowrap;
 
+    #send-button,
     #interrupt-button,
     #attachment-button,
     #chat-voice-input-button {
-      width: 28px;
-      height: 28px;
+      width: 24px;
+      height: 24px;
       font-size: 12px;
       border-radius: 8px;
     }
@@ -166,6 +171,13 @@
   }
   
   // Vision specific
+  .vision-container .input-area textarea {
+    font-size: 14px;
+  }
+  .vision-container .vision-controls {
+    width: 100%;
+    margin-bottom: 10px;
+  }
   .vision-container .input-area .action-button,
   .vision-container .input-area .send-button {
     width: 40px;

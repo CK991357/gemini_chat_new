@@ -109,16 +109,38 @@ export default {
       return handleAPIRequest(request, env);
     }
 
-    // 添加文生图API路由
-    if (url.pathname === '/api/generate-image') {
-        return handleImageGenerationRequest(request, env);
+    // 处理静态资源
+    if (url.pathname === '/' || url.pathname === '/index.html') {
+      console.log('Serving index.html',env);
+      return new Response(await env.__STATIC_CONTENT.get('index.html'), {
+        headers: {
+          'content-type': 'text/html;charset=UTF-8',
+        },
+      });
     }
 
-    // 如果没有任何 API 路由匹配，则将请求交给 Pages 的静态资源处理器。
-    // 这会处理所有静态文件（HTML, CSS, JS, 图片等）的服务，
-    // 并且根据 wrangler.toml 中的 'not_found_handling' 配置处理 404 情况。
-    return env.ASSETS.fetch(request);
-  },
+    // 处理其他静态资源
+    const asset = await env.__STATIC_CONTENT.get(url.pathname.slice(1));
+    if (asset) {
+      const contentType = getContentType(url.pathname);
+      return new Response(asset, {
+        headers: {
+          'content-type': contentType,
+        },
+      });
+    }
+
+
+
+        // 添加文生图API路由
+        if (url.pathname === '/api/generate-image') {
+            return handleImageGenerationRequest(request, env);
+        }
+
+        // ... 其他路由 ...
+
+        return new Response('Not found', { status: 404 });
+    },
 };
 
 function getContentType(path) {

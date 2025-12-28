@@ -1,0 +1,3275 @@
+/* style.css */
+
+/* 全局变量 */
+:root {
+  /* 亮色模式变量 */
+  --bg-color: #f5f7fa;
+  --surface-color: #ffffff;
+  --text-color: #202124;
+  --text-secondary-color: #5f6368;
+  --border-color: #dadce0;
+  --shadow-color: rgba(0, 0, 0, 0.08);
+  --primary-color: #4285f4; /* Google Blue */
+  --secondary-color: #34a853; /* Google Green */
+  --danger-color: #ea4335; /* Google Red */
+  --modal-backdrop-color: rgba(0, 0, 0, 0.6);
+}
+
+body.dark-mode {
+  /* 暗色模式变量 */
+  --bg-color: #1a1a1a;
+  --surface-color: #2d2d2d;
+  --text-color: #f8fafc;
+  --text-secondary-color: #a0a0a0;
+  --border-color: #374151;
+  --shadow-color: rgba(0, 0, 0, 0.3);
+  --primary-color: #6366f1; /* 紫色系 */
+  --secondary-color: #8b5cf6; /* 浅紫色系 */
+  --danger-color: #ef4444;
+  --modal-backdrop-color: rgba(0, 0, 0, 0.85);
+}
+
+/* 通用样式 */
+body {
+    margin: 0;
+    font-family: 'Roboto', sans-serif; /* 建议使用更现代的字体 */
+    font-size: 16px;
+    line-height: 1.6;
+    color: var(--text-color);
+    background-color: var(--bg-color);
+    transition: background-color 0.3s ease, color 0.3s ease;
+    overflow: auto; /* 允许页面滚动 */
+}
+
+/* 添加 iOS 安全区域适配 */
+@supports (padding: max(0px)) {
+    body {
+        padding-top: env(safe-area-inset-top);
+        padding-bottom: env(safe-area-inset-bottom);
+        padding-left: env(safe-area-inset-left);
+        padding-right: env(safe-area-inset-right);
+    }
+}
+
+.app-container {
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    background-color: var(--bg-color);
+}
+
+/* 顶部导航栏 */
+.app-nav {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 15px 25px;
+    background-color: var(--surface-color);
+    box-shadow: 0 2px 8px var(--shadow-color);
+    z-index: 100;
+}
+
+.app-title {
+    margin: 0;
+    font-size: 24px;
+    font-weight: 700;
+    color: var(--primary-color);
+    margin-left: 15px; /* 与模式按钮的间距 */
+}
+
+/* 新增模式切换容器样式 */
+.mode-switcher {
+    display: flex;
+    align-items: center;
+    gap: 10px; /* 按钮和标题之间的间距 */
+}
+
+/* 新增模式切换按钮样式 */
+.mode-button {
+    background: none;
+    border: none;
+    color: var(--text-secondary-color);
+    font-size: 24px;
+    cursor: pointer;
+    transition: color 0.3s ease, transform 0.2s ease;
+    padding: 5px 10px; /* 增加点击区域 */
+    border-radius: 8px;
+}
+
+.mode-button:hover {
+    color: var(--primary-color);
+    background-color: rgba(var(--primary-color-rgb), 0.1);
+    transform: scale(1.05);
+}
+
+.mode-button.active {
+    color: var(--primary-color);
+    background-color: rgba(var(--primary-color-rgb), 0.15);
+    font-weight: 600;
+}
+
+.nav-tools {
+    display: flex;
+    align-items: center;
+    gap: 15px; /* 调整按钮间距 */
+}
+
+.nav-tools button {
+    background: none;
+    border: none;
+    color: var(--text-secondary-color);
+    font-size: 24px;
+    cursor: pointer;
+    /* margin-left: 15px; */ /* 移除，由 gap 控制 */
+    transition: color 0.3s ease, transform 0.2s ease;
+}
+
+.nav-tools button:hover {
+    color: var(--primary-color);
+    transform: scale(1.1);
+}
+
+/* 主容器：左右分栏 */
+.main-container {
+    display: grid;
+    grid-template-columns: 300px 1fr; /* 左侧固定宽度，右侧主内容区自适应 */
+    gap: 20px;
+    padding: 20px;
+    flex-grow: 1;
+    overflow: hidden; /* 防止内部元素溢出导致滚动条 */
+    box-sizing: border-box; /* 新增：确保 padding 不会撑大容器 */
+}
+
+/* 左侧控制面板 */
+.control-panel {
+    background-color: var(--surface-color);
+    border-radius: 12px;
+    box-shadow: 0 4px 16px var(--shadow-color);
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+    overflow-y: auto; /* 允许内部滚动 */
+}
+
+.settings-card {
+    background-color: var(--bg-color);
+    border-radius: 8px;
+    padding: 15px;
+    box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.05);
+}
+
+.settings-card h3 {
+    margin-top: 0;
+    color: var(--primary-color);
+    border-bottom: 1px solid var(--border-color);
+    padding-bottom: 10px;
+    margin-bottom: 15px;
+}
+
+.setting-item {
+    margin-bottom: 10px;
+}
+
+.setting-item label {
+    display: block;
+    margin-bottom: 5px;
+    font-weight: 500;
+    color: var(--text-secondary-color);
+}
+
+.setting-item input[type="password"],
+.setting-item input[type="number"],
+.setting-item select,
+.setting-item textarea {
+    width: calc(100% - 20px);
+    padding: 10px;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    background-color: var(--bg-color);
+    color: var(--text-color);
+    transition: border-color 0.3s ease;
+}
+
+.setting-item input:focus,
+.setting-item select:focus,
+.setting-item textarea:focus {
+    border-color: var(--primary-color);
+    outline: none;
+}
+
+.setting-item textarea {
+    resize: vertical;
+    min-height: 80px;
+}
+
+.fps-help {
+    font-size: 12px;
+    color: var(--text-secondary-color);
+    margin-top: 5px;
+    display: block;
+}
+
+.action-button {
+    background-color: var(--primary-color);
+    color: white;
+    border: none;
+    padding: 10px 20px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 16px;
+    font-weight: 600;
+    transition: background-color 0.3s ease, transform 0.2s ease;
+    display: flex; /* 使按钮成为 flex 容器 */
+    align-items: center; /* 垂直居中内容 */
+    justify-content: center; /* 水平居中内容 */
+}
+
+.action-button:hover {
+    background-color: var(--secondary-color);
+    transform: translateY(-2px);
+}
+
+.action-button.primary {
+    background-color: var(--primary-color);
+}
+
+.action-button.primary:hover {
+    background-color: var(--secondary-color);
+}
+
+.button-group {
+    display: flex;
+    justify-content: flex-start; /* 修改为左对齐 */
+    gap: 10px;
+    margin-top: 15px;
+}
+
+/* 右侧主内容区 */
+.content-area {
+    display: grid;
+    grid-template-rows: auto 1fr; /* 顶部选项卡，下方聊天区自适应 */
+    background-color: var(--surface-color);
+    border-radius: 12px;
+    box-shadow: 0 4px 16px var(--shadow-color);
+    overflow: hidden;
+}
+
+/* 模式切换选项卡 */
+.mode-tabs {
+    display: flex;
+    border-bottom: 1px solid var(--border-color);
+    padding: 0 20px;
+    background-color: var(--surface-color);
+}
+
+.tab {
+    background: none;
+    border: none;
+    padding: 15px 20px;
+    cursor: pointer;
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--text-secondary-color);
+    position: relative;
+    transition: color 0.3s ease;
+}
+
+.tab.active {
+    color: var(--primary-color);
+}
+
+.tab.active::after {
+    content: '';
+    position: absolute;
+    bottom: -1px;
+    left: 0;
+    right: 0;
+    height: 3px;
+    background-color: var(--primary-color);
+    border-radius: 2px 2px 0 0;
+}
+
+/* 聊天容器 */
+.chat-container {
+    display: none; /* 默认隐藏 */
+    padding: 20px;
+    height: 100%;
+    box-sizing: border-box;
+    flex-direction: column; /* 内部使用 flex 布局 */
+    position: relative; /* 确保内部元素可以相对定位 */
+    min-height: 0; /* 关键修复：允许内部内容滚动 */
+    /* display: flex;  移除重复且错误的样式 */
+}
+
+/* 翻译功能区样式 */
+.translation-container {
+    display: none;
+    flex-direction: column;
+    height: 100%;
+    box-sizing: border-box;
+    padding: 20px;
+    background-color: var(--surface-color);
+    border-radius: 12px;
+    box-shadow: 0 4px 16px var(--shadow-color);
+    overflow: auto; /* 允许翻译容器内部滚动 */
+}
+
+.translation-container.active {
+    display: flex;
+}
+
+.translation-input-area,
+.translation-output-area {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 15px;
+    border-radius: 8px;
+    background-color: var(--bg-color);
+    box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.05);
+    margin-bottom: 20px;
+    position: relative;
+}
+
+.translation-output-area {
+    flex-grow: 1;
+    margin-bottom: 0;
+}
+
+.translation-controls {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 10px;
+}
+
+.translation-controls select {
+    flex-grow: 1;
+    padding: 8px 12px;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    background-color: var(--surface-color);
+    color: var(--text-color);
+    font-size: 15px;
+}
+
+.translation-input-area textarea {
+    flex-grow: 1;
+    padding: 12px;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    background-color: var(--surface-color);
+    color: var(--text-color);
+    font-size: 16px;
+    resize: vertical;
+    min-height: 150px;
+    max-height: 300px;
+    overflow-y: auto;
+}
+
+.translation-action-buttons {
+    display: flex;
+    justify-content: flex-end; /* 桌面端右对齐 */
+    gap: 10px; /* 按钮之间的间距 */
+    width: 100%; /* 确保宽度与父容器一致 */
+    margin-top: 10px; /* 与上方输入框的间距 */
+}
+
+.translation-output-display {
+    flex-grow: 1;
+    padding: 12px;
+    padding-bottom: 40px; /* 增加底部内边距，为复制按钮留出空间 */
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    background-color: var(--surface-color);
+    color: var(--text-color);
+    font-size: 16px;
+    min-height: 150px;
+    max-height: 300px;
+    overflow-y: auto;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+.translation-output-area .copy-button {
+    position: absolute;
+    bottom: 8px;
+    right: 8px;
+    background-color: transparent; /* 默认透明背景 */
+    color: var(--text-secondary-color); /* 默认颜色 */
+    border: none;
+    border-radius: 4px; /* 调整圆角 */
+    padding: 5px; /* 调整内边距 */
+    cursor: pointer;
+    font-size: 20px; /* 调整图标大小 */
+    opacity: 0; /* 桌面端默认隐藏 */
+    transition: opacity 0.3s ease, background-color 0.3s ease, color 0.3s ease; /* 添加过渡效果 */
+    z-index: 1; /* 确保按钮在文本内容之上 */
+}
+
+.translation-output-area:hover .copy-button {
+    opacity: 1; /* 悬停显示 */
+    background-color: rgba(var(--primary-color-rgb), 0.1); /* 悬停背景色 */
+    color: var(--primary-color); /* 悬停颜色 */
+}
+
+/* 移动端适配 */
+@media (max-width: 768px) {
+    .translation-container {
+        padding: 15px;
+    }
+
+    .translation-input-area,
+    .translation-output-area {
+        padding: 10px;
+        margin-bottom: 15px;
+    }
+
+    .translation-controls {
+        flex-direction: column;
+        gap: 8px;
+    }
+
+    .translation-input-area textarea,
+    .translation-output-display {
+        min-height: 100px;
+        /* 移除 max-height，允许内容自适应高度 */
+        font-size: 14px;
+    }
+
+    .translation-action-buttons {
+        justify-content: center; /* 移动端居中 */
+    }
+
+    .translation-input-area .action-button {
+        width: 100%;
+        text-align: center;
+    }
+
+    .translation-output-area .copy-button {
+        opacity: 1; /* 移动端始终显示 */
+        background-color: rgba(var(--primary-color-rgb), 0.1); /* 移动端默认背景色 */
+        color: var(--primary-color); /* 移动端默认颜色 */
+        position: absolute; /* 保持绝对定位 */
+        bottom: 8px;
+        right: 8px;
+        width: auto; /* 取消 100% 宽度 */
+        margin-top: 0; /* 移除顶部外边距 */
+        text-align: center; /* 保持居中 */
+        justify-content: center; /* 保持居中 */
+    }
+}
+
+/* 移动端导航栏布局优化 */
+@media (max-width: 768px) {
+  .app-nav {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  
+  .nav-tools {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 5px;
+    margin-top: 10px;
+  }
+  
+  /* 媒体控制按钮单独一行 */
+  .media-controls {
+    grid-column: span 4;
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 5px;
+    margin-top: 5px;
+    padding-top: 10px;
+    border-top: 1px solid var(--border-color);
+  }
+  
+  
+  /* 调整图标按钮大小 */
+  .nav-tools > button,
+  .media-controls > button {
+    width: 100%;
+    height: 40px;
+    font-size: 20px;
+  }
+}
+
+.setting-item.setting-item-horizontal {
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 10px;
+}
+
+.setting-item.setting-item-horizontal label:first-child {
+    margin-bottom: 0;
+}
+
+/* 媒体预览容器优化 */
+.media-previews {
+  position: absolute;
+  bottom: calc(80px + env(safe-area-inset-bottom)); /* 在输入框上方，并考虑安全区域 */
+  right: 10px;
+  z-index: 100;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 10px;
+}
+
+/* 优化移动端输入区域和媒体预览位置 */
+@media (max-width: 768px) {
+    .input-area {
+        /* 确保输入区域在底部，并考虑安全区域 */
+        padding-bottom: calc(15px + env(safe-area-inset-bottom)); /* 15px 是原有 padding-top */
+        bottom: 20px; /* 新增：向上移动10px */
+    }
+    
+    .media-previews {
+        /* 调整媒体预览位置，使其在输入区域上方 */
+        bottom: calc(80px + env(safe-area-inset-bottom)); /* 80px 是输入区域大致高度 */
+        right: 10px; /* 调整右侧间距 */
+        left: 10px; /* 居中显示或根据需要调整 */
+        align-items: center; /* 居中预览窗口 */
+    }
+
+    .media-preview {
+        width: 120px; /* 缩小预览窗口 */
+        height: 90px;
+    }
+}
+
+.media-preview {
+  width: 150px;
+  height: 100px;
+  background: var(--surface-color);
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+  position: relative;
+}
+
+.media-preview video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.chat-container.active {
+    display: flex; /* 激活时显示为 flex 容器 */
+}
+
+/* 文字聊天区 */
+.text-mode .message-history {
+    flex-grow: 1; /* 允许其在 flex 容器中占据可用空间 */
+    overflow-y: auto; /* 确保垂直滚动 */
+    min-height: 0; /* 关键：允许内部内容滚动 */
+    display: flex;
+    flex-direction: column; /* 确保消息从顶部到底部排列 */
+    padding-bottom: 10px; /* 底部留白，防止消息紧贴底部 */
+}
+
+/* ... (保留原有 message, avatar, content 样式) ... */
+
+.message {
+    display: flex;
+    align-items: flex-start;
+    margin-bottom: 15px; /* 保持底部间距 */
+    max-width: 85%; /* 调整最大宽度，留出更多空白 */
+}
+
+.message.user {
+    flex-direction: row-reverse;
+    margin-left: auto; /* 靠右对齐 */
+    margin-right: 45px; /* 新增：为用户消息提供右边距，防止头像被遮挡 */
+}
+
+.message.ai {
+    margin-right: auto; /* 靠左对齐 */
+    margin-left: 2px;  /* 新增：为AI消息提供左边距 */
+}
+
+.message .avatar {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 18px;
+    flex-shrink: 0;
+    margin: 0 10px;
+    background-color: var(--primary-color);
+    color: white;
+}
+
+.message.ai .avatar {
+    background-color: var(--secondary-color);
+}
+
+/* 新增复制按钮样式 */
+.message .content {
+    position: relative; /* 确保复制按钮可以相对定位 */
+    padding-right: 18px; /* 恢复默认内边距，因为复制按钮移到外部 */
+    overflow-wrap: break-word; /* 允许长单词或URL内部换行 */
+    word-break: break-word; /* 备用属性，增强兼容性 */
+}
+
+/* 原有的复制按钮 - 调整位置 */
+.copy-button {
+    position: absolute;
+    bottom: -5px; /* 调整到底部外侧 */
+    right: -55px; /* 调整到右侧外侧，为第二个按钮腾出空间 */
+    background: none;
+    border: none;
+    color: var(--text-secondary-color);
+    font-size: 18px;
+    cursor: pointer;
+    opacity: 0;
+    transition: opacity 0.3s ease, color 0.3s ease;
+    padding: 5px;
+    border-radius: 4px;
+    font-family: 'Material Symbols Outlined';
+    font-weight: normal;
+    font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+}
+
+/* 新增：复制原始Markdown按钮 */
+.copy-raw-button {
+    position: absolute;
+    bottom: -5px; /* 与复制按钮对齐 */
+    right: -30px; /* 放在复制按钮的左侧 */
+    background: none;
+    border: none;
+    color: var(--text-secondary-color);
+    font-size: 18px;
+    cursor: pointer;
+    opacity: 0;
+    transition: opacity 0.3s ease, color 0.3s ease;
+    padding: 5px;
+    border-radius: 4px;
+    font-family: 'Material Symbols Outlined';
+    font-weight: normal;
+    font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+}
+
+/* 悬停时显示两个按钮 */
+.message .content:hover .copy-button,
+.message .content:hover .copy-raw-button {
+    opacity: 1;
+}
+
+/* 悬停效果 */
+.copy-button:hover,
+.copy-raw-button:hover {
+    color: var(--primary-color);
+    background-color: rgba(0, 0, 0, 0.1);
+}
+
+/* 用户消息中的按钮 */
+.message.user .copy-button,
+.message.user .copy-raw-button {
+    color: rgba(255, 255, 255, 0.7);
+}
+.message.user .copy-button:hover,
+.message.user .copy-raw-button:hover {
+    color: white;
+    background-color: rgba(255, 255, 255, 0.2);
+}
+
+/* 可选：工具提示 */
+.copy-button::after,
+.copy-raw-button::after {
+    content: attr(title);
+    position: absolute;
+    bottom: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    background-color: rgba(0, 0, 0, 0.8);
+    color: white;
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: 12px;
+    white-space: nowrap;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.3s ease;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    z-index: 1000;
+    margin-bottom: 5px;
+}
+
+.copy-button:hover::after,
+.copy-raw-button:hover::after {
+    opacity: 1;
+}
+
+.message.user .content {
+    background-color: var(--primary-color);
+    color: white;
+    border-radius: 18px;
+    padding: 12px 12px 12px 20px; /* 调整右侧内边距，使其向左移动 */
+}
+
+.message.ai .content {
+    background-color: var(--bg-color); /* 新增：恢复灰色底色 */
+    border-radius: 18px; /* 新增：确保圆形 */
+    /* border-bottom-left-radius: 4px; */ /* 删除：恢复圆形 */
+    margin-top: 5px; /* 新增：使消息顶部与头像中线对齐 */
+}
+
+/* 语音消息内容样式 */
+.audio-content {
+    display: flex;
+    align-items: center;
+    gap: 10px; /* 元素之间的间距 */
+    padding: 12px 18px;
+    border-radius: 18px;
+    background-color: var(--bg-color); /* 与文本消息背景一致 */
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05); /* 与文本消息阴影一致 */
+    color: var(--text-color); /* 与文本消息颜色一致 */
+    word-break: break-word;
+}
+
+.message.user .audio-content {
+    background-color: var(--primary-color);
+    color: white;
+    border-bottom-right-radius: 4px;
+}
+
+.message.ai .audio-content {
+    background-color: var(--bg-color); /* AI语音消息背景与普通消息一致 */
+    color: var(--text-color); /* AI语音消息文本颜色与普通消息一致 */
+}
+
+.audio-player {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-grow: 1; /* 允许播放器占据可用空间 */
+}
+
+.audio-play-button, .audio-download-button, .audio-transcribe-button {
+    background: none;
+    border: none;
+    color: inherit; /* 继承父元素的颜色 */
+    cursor: pointer;
+    font-size: 24px; /* Material Icons 默认大小 */
+    transition: color 0.3s ease, transform 0.2s ease;
+    padding: 0; /* 移除默认内边距 */
+    display: flex; /* 确保图标居中 */
+    align-items: center;
+    justify-content: center;
+}
+
+.audio-play-button:hover, .audio-download-button:hover, .audio-transcribe-button:hover {
+    color: var(--primary-color); /* 悬停时变色 */
+    transform: scale(1.1);
+}
+
+.message.user .audio-play-button,
+.message.user .audio-download-button,
+.message.user .audio-transcribe-button {
+    color: white; /* 用户消息中的按钮颜色 */
+}
+
+.message.user .audio-play-button:hover,
+.message.user .audio-download-button:hover,
+.message.user .audio-transcribe-button:hover {
+    color: #e0e0e0; /* 用户消息中按钮悬停颜色 */
+}
+
+/* 使用高优先级选择器强制设定 AI 消息中所有音频按钮的颜色 */
+.message.ai .audio-play-button,
+.message.ai .audio-download-button,
+.message.ai .audio-transcribe-button {
+    color: var(--text-color);
+}
+
+.message.ai .audio-play-button:hover,
+.message.ai .audio-download-button:hover,
+.message.ai .audio-transcribe-button:hover {
+    color: var(--text-secondary-color); /* 悬停时颜色变深 */
+}
+
+
+.audio-waveform {
+    flex-grow: 1;
+    height: 6px; /* 进度条高度 */
+    background-color: rgba(0, 0, 0, 0.1); /* 进度条背景 */
+    border-radius: 3px;
+    overflow: hidden;
+    position: relative;
+}
+
+.audio-progress-bar {
+    height: 100%;
+    width: 0%;
+    background-color: var(--primary-color); /* 进度条颜色 */
+    transition: width 0.1s linear;
+}
+
+.message.user .audio-progress-bar {
+    background-color: white; /* 用户消息中的进度条颜色 */
+}
+
+.message.ai .audio-progress-bar {
+    background-color: var(--text-color);
+}
+
+.audio-duration {
+    font-size: 14px;
+    color: var(--text-secondary-color);
+    min-width: 40px; /* 确保时长显示区域足够 */
+    text-align: right;
+    flex-shrink: 0; /* 防止被压缩 */
+}
+
+.transcription-display {
+    margin-top: 10px;
+    padding: 10px;
+    background-color: var(--bg-color);
+    border-radius: 8px;
+    font-size: 14px;
+    color: var(--text-color);
+    word-break: break-word;
+    white-space: pre-wrap; /* 保留空白符和换行符 */
+    display: none; /* 默认隐藏，由 JS 控制显示 */
+    box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.05);
+}
+
+.message.user .transcription-display {
+    background-color: rgba(255, 255, 255, 0.2); /* 用户消息中的转录文本背景 */
+    color: white;
+}
+
+.message.ai .transcription-display {
+    background-color: rgba(255, 255, 255, 0.2); /* AI消息中的转录文本背景 */
+    color: white;
+}
+
+.message.user .audio-duration {
+    color: white; /* 用户消息中的时长颜色 */
+}
+
+.message.ai .audio-duration {
+    color: var(--text-color);
+}
+
+
+.text-mode .input-area {
+    display: flex;
+    align-items: center; /* 垂直居中对齐 */
+    gap: 10px;
+    padding-top: 15px;
+    border-top: 1px solid var(--border-color);
+    background-color: var(--surface-color);
+    padding: 15px 40px;
+    box-sizing: border-box;
+    position: sticky;
+    bottom: 0;
+    z-index: 10;
+}
+
+.text-mode #message-input {
+    flex-grow: 1;
+    padding: 12px;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    background-color: var(--bg-color);
+    color: var(--text-color);
+    font-size: 16px;
+    resize: vertical; /* 允许垂直方向调整大小 */
+    max-height: 180px; /* 新增：限制最大高度 */
+    overflow-y: auto; /* 新增：内容溢出时显示滚动条 */
+}
+
+.text-mode #send-button {
+    background-color: var(--primary-color);
+    color: white;
+    border: none;
+    border-radius: 8px;
+    width: 48px;
+    height: 48px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    font-size: 24px;
+    transition: background-color 0.3s ease;
+}
+
+.text-mode #send-button:hover {
+    background-color: var(--secondary-color);
+}
+
+.text-mode #interrupt-button {
+    background-color: var(--primary-color);
+    color: white;
+    border: none;
+    border-radius: 8px;
+    width: 48px;
+    height: 48px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    font-size: 24px;
+    transition: background-color 0.3s ease;
+}
+
+.text-mode #interrupt-button:hover {
+    background-color: var(--secondary-color);
+}
+
+/* 确保输入区域内的按钮不会被压缩 */
+.text-mode .input-area > button {
+    flex-shrink: 0;
+}
+
+/* 新增：附件按钮样式 */
+#attachment-button {
+    background-color: var(--primary-color);
+    color: white;
+    border: none;
+    border-radius: 50%; /* 改为圆形 */
+    width: 48px; /* 确保是圆形 */
+    height: 48px; /* 确保是圆形 */
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    font-size: 24px;
+    transition: background-color 0.3s ease, transform 0.2s ease;
+    flex-shrink: 0; /* 防止被压缩 */
+}
+
+#attachment-button:hover {
+    background-color: var(--secondary-color);
+    transform: scale(1.05);
+}
+
+/* 新增：文件附件预览容器样式 */
+.file-attachment-previews {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    padding: 0 20px 10px; /* 左右和底部留出间距 */
+    max-height: 120px; /* 限制最大高度，超出则滚动 */
+    overflow-y: auto;
+    overflow-x: hidden;
+}
+
+/* 新增：单个文件预览卡片样式 */
+.file-preview-card {
+    position: relative;
+    width: 100px;
+    height: 100px;
+    border-radius: 8px;
+    overflow: hidden;
+    background-color: var(--bg-color);
+    border: 1px solid var(--border-color);
+    box-shadow: 0 2px 4px var(--shadow-color);
+    flex-shrink: 0; /* 防止被压缩 */
+}
+
+.file-preview-card img,
+.file-preview-card canvas {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+/* 新增：预览卡片上的关闭按钮 */
+.file-preview-card .close-button {
+    position: absolute;
+    top: 4px;
+    right: 4px;
+    background: rgba(0, 0, 0, 0.6);
+    color: white;
+    border: none;
+    border-radius: 50%;
+    width: 20px;
+    height: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    font-size: 14px;
+    transition: background-color 0.3s ease;
+    z-index: 1;
+}
+
+.file-preview-card .close-button:hover {
+    background: var(--danger-color);
+}
+
+/* 新增：文件占位符样式（用于PDF、音频等） */
+.file-placeholder {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    height: 100%;
+    text-align: center;
+    padding: 10px;
+    box-sizing: border-box;
+}
+
+.file-placeholder i {
+    font-size: 40px; /* 调整图标大小 */
+    color: var(--text-secondary-color);
+    margin-bottom: 8px;
+}
+
+.file-placeholder p {
+    font-size: 12px;
+    color: var(--text-secondary-color);
+    margin: 0;
+    white-space: nowrap;
+}
+
+/* 新增媒体控制区域样式 */
+.media-controls {
+    display: flex;
+    justify-content: center;
+    gap: 15px;
+    padding-top: 10px;
+    border-top: 1px solid var(--border-color);
+    background-color: var(--surface-color); /* 确保背景色一致 */
+    padding-bottom: 15px; /* 底部留白 */
+}
+
+.media-button {
+    background: var(--bg-color);
+    border: 1px solid var(--border-color);
+    border-radius: 50%;
+    width: 40px;
+    height: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    font-size: 20px;
+    transition: all 0.3s ease;
+    color: var(--text-secondary-color); /* 默认颜色 */
+    min-width: 44px; /* 确保按钮有足够的点击区域 */
+    min-height: 44px;
+}
+
+.media-button:hover, .media-button.active {
+    background: var(--primary-color);
+    color: white;
+}
+
+/* 新增媒体预览容器样式 */
+.media-previews {
+    position: absolute; /* 相对于 .chat-container 定位 */
+    bottom: 150px; /* 调整位置，避免与输入框重叠 */
+    right: 20px;
+    display: none; /* 默认隐藏，由 JS 控制显示 */
+    z-index: 100;
+    gap: 10px;
+    flex-direction: column; /* 垂直堆叠预览窗口 */
+    align-items: flex-end; /* 靠右对齐 */
+}
+
+.media-preview {
+    width: 200px;
+    height: 150px;
+    background: var(--surface-color);
+    border-radius: 8px;
+    overflow: hidden;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    position: relative;
+    display: none; /* 默认隐藏，由 JS 控制显示 */
+}
+
+.media-preview video {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.close-button {
+    position: absolute;
+    top: 5px;
+    right: 5px;
+    background: rgba(0,0,0,0.5);
+    color: white;
+    border: none;
+    border-radius: 50%;
+    width: 24px;
+    height: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    font-size: 16px;
+    transition: background-color 0.3s ease;
+}
+
+.close-button:hover {
+    background: var(--danger-color);
+}
+
+/* 删除音频聊天区相关样式 */
+/* .audio-mode .audio-visualization { ... } */
+/* .audio-mode .media-display-area { ... } */
+/* .audio-mode .media-preview-box { ... } */
+/* .audio-mode .video-controls { ... } */
+/* .audio-mode .close-button { ... } */
+/* .audio-mode .audio-controls { ... } */
+/* .audio-mode #mic-button.active { ... } */
+
+/* 新增日志模式样式 */
+.log-mode {
+    display: none; /* 默认隐藏 */
+    flex-direction: column;
+    height: 100%;
+    box-sizing: border-box;
+    background-color: var(--surface-color);
+    border-radius: 12px;
+    box-shadow: 0 4px 16px var(--shadow-color);
+    overflow: hidden;
+}
+
+.log-mode.active {
+    display: flex; /* 激活时显示 */
+}
+
+.log-mode .log-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 15px;
+    background-color: var(--surface-color);
+    border-bottom: 1px solid var(--border-color);
+}
+
+.log-mode .log-header h3 {
+    margin: 0;
+    font-size: 18px;
+    color: var(--text-color);
+}
+
+.log-mode .log-header .action-button {
+    padding: 5px 10px;
+    font-size: 14px;
+    margin-left: 10px;
+}
+
+.log-mode .log-content {
+    flex-grow: 1;
+    padding: 15px;
+    overflow-y: auto;
+    font-family: 'SF Mono', monospace;
+    font-size: 13px;
+    color: var(--text-color);
+    white-space: pre-wrap;
+    word-break: break-all;
+}
+
+/* 响应式设计 */
+@media (min-width: 1201px) {
+    /* 桌面端显示连接按钮 */
+    #connect-button {
+        display: block;
+    }
+}
+
+@media (max-width: 1200px) {
+    /* 移动端和iPad端布局调整 */
+    .main-container {
+           grid-template-columns: 1fr; /* 单列布局 */
+    }
+    .control-panel {
+        display: none; /* 默认隐藏 */
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        z-index: 1000;
+        background-color: rgba(0, 0, 0, 0.5);
+        padding: 0;
+        border-radius: 0;
+        box-shadow: none;
+        flex-direction: row;
+        justify-content: flex-end;
+        transition: background-color 0.3s ease;
+    }
+    .control-panel.active {
+        display: flex;
+        justify-content: flex-end;
+    }
+    .control-panel .settings-wrapper {
+        width: 85%;
+        max-width: 400px;
+        height: 100%;
+        background-color: var(--surface-color);
+        box-shadow: -4px 0 16px var(--shadow-color);
+        padding: 20px;
+        display: flex;
+        flex-direction: column;
+        gap: 15px;
+        overflow-y: auto;
+        transform: translateX(100%);
+        transition: transform 0.3s ease-out;
+    }
+    .control-panel.active .settings-wrapper {
+        transform: translateX(0);
+    }
+
+    .content-area {
+        order: 1;
+    }
+    .log-mode {
+        position: relative;
+        bottom: auto;
+        left: auto;
+        right: auto;
+        width: auto;
+        height: 100%;
+        padding-bottom: 0;
+    }
+    /* 确保在移动端和iPad端，设置面板内的连接按钮可见 */
+    .button-group #connect-button {
+        display: block;
+    }
+}
+
+/* 针对iPad尺寸范围的特定调整 */
+@media (min-width: 769px) and (max-width: 1200px) {
+    /* 确保在iPad尺寸下，设置面板内的连接按钮可见 */
+    .button-group #connect-button {
+        display: block;
+        width: auto; /* 恢复自动宽度 */
+        margin-top: 0; /* 移除顶部外边距 */
+    }
+}
+
+@media (max-width: 768px) {
+    .app-nav {
+        flex-direction: column;
+        align-items: stretch;
+        padding: 10px;
+    }
+    .app-title {
+        font-size: 20px;
+    }
+    .nav-tools {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 5px;
+        margin-top: 10px;
+    }
+    .media-controls {
+        grid-column: span 4;
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 5px;
+        margin-top: 5px;
+        padding-top: 10px;
+        border-top: 1px solid var(--border-color);
+    }
+    .nav-tools > button,
+    .media-controls > button {
+        width: 100%;
+        height: 40px;
+        font-size: 20px;
+    }
+    .main-container {
+        padding: 15px;
+        gap: 15px;
+    }
+    .control-panel {
+        padding: 15px;
+    }
+    .settings-card {
+        padding: 10px;
+    }
+    .tab {
+        padding: 10px 12px;
+        font-size: 13px;
+    }
+    .chat-container {
+        padding: 15px;
+    }
+    .message .avatar {
+        width: 30px;
+        height: 30px;
+        font-size: 16px;
+    }
+    .message .content {
+        padding: 10px 15px;
+        font-size: 14px;
+    }
+
+    .message {
+        padding: 0 5px; /* 为消息本身添加水平内边距，增加左右间距 */
+        max-width: 85%;   /* 调整最大宽度 */
+    }
+    .message.ai {
+        margin-left: -5px; /* 移动端AI消息左边距调整 */
+    }
+    .text-mode #message-input {
+        padding: 10px;
+        font-size: 14px;
+    }
+    .text-mode #send-button { /* 发送按钮单独设置 */
+        width: 32px;
+        height: 32px;
+        font-size: 16px;
+        border-radius: 8px; /* 确保是圆角矩形 */
+    }
+    .text-mode #interrupt-button,  /* 暂停按钮 */
+    .text-mode #attachment-button, /* 附件按钮 */
+    .text-mode #chat-voice-input-button /* 聊天语音输入按钮 */{
+        width: 28px; /* 调整为与发送按钮一致 */
+        height: 28px; /* 调整为与发送按钮一致 */
+        font-size: 12px; /* 稍微调小字体大小 */
+        border-radius: 8px; /* 确保是圆角矩形 */
+    }
+
+    .text-mode .input-area {
+        padding-left: 0px; /* 调整左侧内边距 */
+        padding-right: 10px; /* 减小右侧内边距，为图标腾出空间 */
+        gap: 5px; /* 调整按钮间距以适应新按钮 */
+        flex-wrap: nowrap; /* 防止换行 */
+    }
+    .audio-mode .media-display-area {
+        grid-template-columns: 1fr;
+    }
+    .audio-mode .media-preview-box {
+        min-height: 150px;
+    }
+    .audio-mode .audio-controls .action-button {
+        width: 48px;
+        height: 48px;
+        font-size: 24px;
+    }
+}
+
+.video-controls {
+    position: absolute;
+    top: 5px;
+    right: 5px;
+    bottom: 5px;
+    left: 5px;
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    z-index: 10;
+    pointer-events: none;
+}
+
+.video-controls button {
+    pointer-events: auto;
+    background: rgba(0, 0, 0, 0.5);
+    color: white;
+    border: none;
+    border-radius: 50%;
+    width: 30px;
+    height: 30px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    font-size: 16px;
+    transition: background-color 0.3s ease;
+}
+
+#stop-video {
+    position: absolute;
+    top: 5px;
+    right: 5px;
+}
+
+#flip-camera {
+    position: absolute;
+    bottom: 5px;
+    right: 5px;
+}
+
+@supports (-webkit-overflow-scrolling: touch) {
+    .message-history {
+        -webkit-overflow-scrolling: touch;
+    }
+    
+    input, button, textarea {
+        -webkit-appearance: none;
+        appearance: none;
+        border-radius: 0;
+    }
+}
+
+/* Markdown 渲染内容通用样式 */
+.message .content p {
+    margin-bottom: 1em;
+    line-height: 1.6;
+}
+
+.message .content h1,
+.message .content h2,
+.message .content h3,
+.message .content h4,
+.message .content h5,
+.message .content h6 {
+    margin-top: 1.5em;
+    margin-bottom: 0.8em;
+    font-weight: bold;
+    line-height: 1.2;
+    color: var(--text-color);
+}
+
+.message .content h1 { font-size: 1.8em; }
+.message .content h2 { font-size: 1.6em; }
+.message .content h3 { font-size: 1.4em; }
+.message .content h4 { font-size: 1.2em; }
+.message .content h5 { font-size: 1.1em; }
+.message .content h6 { font-size: 1em; }
+
+.message .content ul,
+.message .content ol {
+    margin-left: 20px;
+    padding-left: 1.5em; /* 调整 */
+    margin-bottom: 1em;
+}
+
+.message .content li {
+    margin-bottom: 0.5em;
+}
+
+.message .content ul li {
+    list-style-type: disc;
+}
+
+.message .content ol li {
+    list-style-type: decimal;
+}
+
+/* 代码块样式 */
+.message .content pre {
+    background-color: var(--bg-color);
+    padding: 12px; /* 调整 */
+    border-radius: 8px;
+    overflow-x: auto;
+    margin-bottom: 10px; /* 调整 */
+    border: 1px solid var(--border-color);
+    max-height: 300px; /* 新增 */
+    overflow-y: auto; /* 新增 */
+}
+
+.message .content pre code {
+    display: block;
+    white-space: pre-wrap;
+    word-break: break-all;
+    font-family: 'SF Mono', monospace;
+    font-size: 0.9em;
+    line-height: 1.5;
+}
+
+/* 行内代码样式 */
+.message .content code {
+    background-color: rgba(128, 128, 128, 0.1);
+    padding: 0.2em 0.4em;
+    border-radius: 4px;
+    font-family: 'SF Mono', monospace;
+    font-size: 0.9em;
+    color: var(--text-color);
+}
+
+/* 引用块样式 */
+.message .content blockquote {
+    border-left: 4px solid var(--primary-color);
+    padding-left: 1em;
+    margin: 1em 0;
+    color: var(--text-secondary-color);
+    background-color: rgba(var(--primary-color-rgb, 66, 133, 244), 0.05);
+    border-radius: 4px;
+}
+
+/* 表格样式 */
+.message .content table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: 1em;
+    overflow-x: auto;
+    display: block;
+}
+
+.message .content th,
+.message .content td {
+    border: 1px solid var(--border-color);
+    padding: 8px;
+    text-align: left;
+}
+
+.message .content th {
+    background-color: var(--bg-color);
+    font-weight: bold;
+}
+
+.message .content tr:nth-child(even) {
+    background-color: var(--bg-color);
+}
+
+/* 链接样式 */
+.message .content a {
+    color: var(--primary-color);
+    text-decoration: underline;
+}
+
+.message .content a:hover {
+    text-decoration: none;
+}
+
+/* 图片样式 */
+.message .content img {
+    max-width: 100%;
+    height: auto;
+    display: block;
+    margin: 1em 0;
+    border-radius: 8px;
+}
+
+/* 暗色模式下代码块和行内代码的背景调整 */
+body.dark-mode .message .content pre {
+    background-color: #333;
+    border-color: #444;
+}
+
+body.dark-mode .message .content code {
+    background-color: rgba(255, 255, 255, 0.1);
+}
+
+body.dark-mode .message .content blockquote {
+    background-color: rgba(var(--primary-color-rgb, 99, 102, 241), 0.1);
+}
+
+/* 辅助变量，用于 rgba() */
+:root {
+    --primary-color-rgb: 66, 133, 244; /* Google Blue 的 RGB 值 */
+}
+
+body.dark-mode {
+    --primary-color-rgb: 99, 102, 241; /* 暗色模式下 primary-color 的 RGB 值 */
+/* 确保Markdown容器正确显示 */
+.markdown-container {
+  overflow-x: auto;
+  word-wrap: break-word;
+}
+}
+
+/* 翻译模式语音输入按钮的录音状态样式 */
+#translation-voice-input-button.recording-active {
+    background-color: var(--danger-color); /* 录音时变为红色 */
+    color: white;
+    animation: pulse 1.5s infinite; /* 添加脉冲动画 */
+}
+
+@keyframes pulse {
+    0% {
+        box-shadow: 0 0 0 0 rgba(var(--danger-color-rgb), 0.7);
+    }
+    70% {
+        box-shadow: 0 0 0 10px rgba(var(--danger-color-rgb), 0);
+    }
+    100% {
+        box-shadow: 0 0 0 0 rgba(var(--danger-color-rgb), 0);
+    }
+}
+
+/* 定义 --danger-color-rgb 变量 */
+:root {
+    --danger-color-rgb: 234, 67, 53; /* 亮色模式下的 Google Red RGB 值 */
+}
+
+body.dark-mode {
+    --danger-color-rgb: 239, 68, 68; /* 暗色模式下的 danger-color RGB 值 */
+}
+
+/* Toast 通知样式 */
+#toast-container {
+    position: fixed;
+    top: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 2000;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+}
+
+.toast-message {
+    background-color: rgba(0, 0, 0, 0.75);
+    color: white;
+    padding: 12px 20px;
+    border-radius: 25px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    font-size: 15px;
+    opacity: 0;
+    transition: opacity 0.3s ease, transform 0.3s ease;
+    transform: translateY(-20px);
+}
+
+.toast-message.show {
+    opacity: 1;
+    transform: translateY(0);
+}
+
+/* 聊天语音输入按钮样式调整为圆形 */
+#chat-voice-input-button {
+    background-color: var(--primary-color);
+    color: white;
+    border: none;
+    border-radius: 50%; /* 改为圆形 */
+    width: 48px; /* 确保是圆形 */
+    height: 48px; /* 确保是圆形 */
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    font-size: 24px;
+    transition: background-color 0.3s ease, transform 0.2s ease;
+    flex-shrink: 0; /* 防止被压缩 */
+}
+
+#chat-voice-input-button:hover {
+    background-color: var(--secondary-color);
+    transform: scale(1.05);
+}
+
+/* 聊天语音输入按钮录音状态 */
+#chat-voice-input-button.recording {
+    background-color: var(--danger-color);
+    color: white;
+    animation: pulse 1.5s infinite;
+}
+
+/* 系统信息消息样式 */
+.message.system-info {
+    justify-content: center;
+    align-items: center;
+    margin: 10px 0;
+    color: var(--text-secondary-color);
+    font-size: 14px;
+    font-style: italic;
+}
+
+.message.system-info .content {
+    background-color: transparent;
+    padding: 5px 15px;
+    border-radius: 15px;
+    background-color: var(--bg-color);
+}
+
+/* 视觉模型功能区样式 (重构为聊天样式) */
+.vision-container {
+    display: none; /* 默认隐藏 */
+    flex-direction: column;
+    height: 100%;
+    box-sizing: border-box;
+    padding: 20px;
+    overflow: hidden; /* 父容器隐藏溢出 */
+}
+
+.vision-container.active {
+    display: flex;
+}
+
+/* 视觉模式下的消息历史记录 */
+.vision-container .message-history {
+    flex-grow: 1;
+    overflow-y: auto;
+    padding-bottom: 10px;
+    display: flex;
+    flex-direction: column;
+}
+
+/* 视觉模式下的附件预览 */
+.vision-container .file-attachment-previews {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    padding: 0 20px 10px;
+    max-height: 120px;
+    overflow-y: auto;
+}
+
+/* 视觉模式下的输入区域 */
+.vision-container .input-area {
+    display: flex;
+    flex-wrap: wrap; /* 允许换行 */
+    align-items: center;
+    gap: 10px;
+    padding: 15px 20px;
+    border-top: 1px solid var(--border-color);
+    background-color: var(--surface-color);
+    flex-shrink: 0;
+}
+
+.vision-container .vision-controls {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    width: 100%;
+    margin-bottom: 10px;
+}
+
+.vision-container .vision-control-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    flex-wrap: wrap;
+}
+
+.vision-container .vision-control-row label {
+    font-weight: 500;
+    color: var(--text-secondary-color);
+    min-width: 40px;
+    flex-shrink: 0;
+}
+
+.vision-container .vision-control-row select {
+    flex: 1 1 150px;
+    min-width: 120px;
+    padding: 8px 12px;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    background-color: var(--surface-color);
+    color: var(--text-color);
+    font-size: 14px;
+    transition: border-color 0.3s ease;
+}
+
+.vision-container .vision-control-row select:focus {
+    outline: none;
+    border-color: var(--primary-color);
+    box-shadow: 0 0 0 2px rgba(0, 123, 255, 0.1);
+}
+
+/* 对局总结按钮样式 */
+.vision-container .vision-control-row .action-button {
+    background-color: var(--primary-color);
+    color: white;
+    border: none;
+    border-radius: 6px;
+    padding: 8px 16px;
+    font-size: 14px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    white-space: nowrap;
+    flex-shrink: 0;
+    margin-left: 8px;
+}
+
+.vision-container .vision-control-row .action-button:hover:not(:disabled) {
+    background-color: var(--secondary-color);
+    transform: translateY(-1px);
+}
+
+.vision-container .vision-control-row .action-button:disabled {
+    background-color: var(--border-color);
+    cursor: not-allowed;
+    transform: none;
+    opacity: 0.7;
+}
+
+.vision-container .input-area textarea {
+    flex-grow: 1;
+    padding: 12px;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    background-color: var(--bg-color);
+    color: var(--text-color);
+    font-size: 16px;
+    resize: vertical;
+    max-height: 150px;
+    overflow-y: auto;
+}
+
+.vision-container .input-area .action-button,
+.vision-container .input-area .send-button {
+    background-color: var(--primary-color);
+    color: white;
+    border: none;
+    border-radius: 8px;
+    width: 48px;
+    height: 48px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    font-size: 24px;
+    transition: background-color 0.3s ease;
+    flex-shrink: 0;
+}
+
+.vision-container .input-area .action-button:hover,
+.vision-container .input-area .send-button:hover {
+    background-color: var(--secondary-color);
+}
+
+/* 视觉模型响应式调整 */
+@media (max-width: 768px) {
+    .vision-container {
+        padding: 15px;
+    }
+
+    .vision-container .input-area {
+        padding: 10px;
+        gap: 8px;
+    }
+
+    .vision-container .input-area textarea {
+        font-size: 14px;
+    }
+
+    .vision-container .input-area .action-button,
+    .vision-container .input-area .send-button {
+        width: 40px;
+        height: 40px;
+        font-size: 20px;
+    }
+
+    .vision-container .vision-control-row {
+        width: 100%;
+        margin-bottom: 5px;
+    }
+}
+
+/* 在 vision-container 相关样式后添加以下内容 */
+
+/* 视觉模式全屏样式 */
+.vision-container.full-screen {
+  padding: 0;
+  overflow: hidden;
+}
+
+/* 视觉聊天全屏 */
+.vision-chat-fullscreen {
+  display: none; /* 默认隐藏 */
+  flex-direction: column;
+  height: 100%;
+  width: 100%;
+}
+
+.vision-chat-fullscreen.active {
+  display: flex;
+}
+
+/* =================================
+   国际象棋棋盘样式（修复版）
+   ================================= */
+
+/* 棋盘全屏模式样式 */
+.chess-fullscreen {
+    display: none;
+    flex-direction: column;
+    height: 100%;
+    width: 100%;
+    padding: 15px;
+    box-sizing: border-box;
+    background-color: var(--surface-color);
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+}
+
+.chess-fullscreen.active {
+    display: flex;
+}
+
+.chess-content-wrapper {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    min-height: 0;
+}
+
+.chess-board-area {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    align-items: center;
+    justify-content: flex-start;
+    min-height: 0;
+    overflow-y: auto;
+}
+
+/* 棋盘基础样式 */
+.chess-board {
+    display: grid;
+    grid-template-columns: repeat(8, 1fr);
+    grid-template-rows: repeat(8, 1fr);
+    border: 3px solid #333;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    background: #f5f5f5;
+    flex-shrink: 0;
+    /* 桌面端尺寸 */
+    width: min(50vw, 500px);
+    height: min(50vw, 500px);
+}
+
+.chess-square {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: min(8vw, 40px);
+    position: relative;
+    cursor: pointer;
+    -webkit-user-select: none;
+    user-select: none;
+    transition: background-color 0.2s ease;
+}
+
+.chess-square.light {
+    background-color: #f0d9b5;
+}
+
+.chess-square.dark {
+    background-color: #b58863;
+}
+
+.chess-square.highlight {
+    background-color: rgba(255, 255, 0, 0.4);
+}
+
+.chess-square.selected {
+    background-color: rgba(0, 255, 0, 0.4);
+}
+
+.chess-piece-label {
+    position: absolute;
+    bottom: 2px;
+    right: 2px;
+    font-size: 10px;
+    color: rgba(0, 0, 0, 0.5);
+}
+
+/* 信息面板样式 */
+.chess-info-panel {
+    background: var(--surface-color);
+    padding: 20px;
+    border-radius: 12px;
+    box-shadow: 0 4px 16px var(--shadow-color);
+    width: 100%;
+}
+
+.chess-info-panel h3 {
+    margin: 0 0 15px 0;
+    color: var(--primary-color);
+    text-align: center;
+    font-size: 1.5em;
+}
+
+/* FEN显示区域 */
+.fen-display {
+    background: var(--bg-color);
+    padding: 15px;
+    border-radius: 8px;
+    border: 1px solid var(--border-color);
+}
+
+.fen-display label {
+    display: block;
+    margin-bottom: 8px;
+    font-weight: 500;
+    color: var(--text-color);
+    font-size: 1.1em;
+}
+
+.fen-text {
+    width: 100%;
+    padding: 12px;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    background: var(--surface-color);
+    color: var(--text-color);
+    font-family: monospace;
+    resize: vertical;
+    min-height: 80px;
+    font-size: 14px;
+    box-sizing: border-box;
+    line-height: 1.4;
+}
+
+.fen-actions {
+    display: flex;
+    gap: 10px;
+    margin-top: 10px;
+    flex-wrap: wrap;
+}
+
+.fen-actions .action-button {
+    flex: 1;
+    min-width: 100px;
+    text-align: center;
+    padding: 12px 8px;
+    font-size: 14px;
+}
+
+/* 全屏控制按钮 - 固定在底部 */
+.fullscreen-controls {
+    display: flex;
+    justify-content: center;
+    padding: 15px;
+    border-top: 1px solid var(--border-color);
+    margin-top: auto; /* 关键：推到容器底部 */
+    background: var(--surface-color);
+    flex-shrink: 0; /* 防止被压缩 */
+}
+
+.fullscreen-controls .action-button {
+    min-width: 200px;
+    padding: 15px;
+    font-size: 16px;
+    font-weight: 600;
+}
+
+/* =================================
+   移动端响应式布局
+   ================================= */
+
+/* 手机端专用样式 */
+@media (max-width: 768px) {
+    .chess-fullscreen {
+        padding: 10px;
+    }
+    
+    .chess-board-area {
+        gap: 15px;
+        justify-content: flex-start;
+    }
+    
+    /* 棋盘在手机上适应屏幕 - 关键修复 */
+    .chess-board {
+        width: 75vw !important; /* 使用 !important 确保覆盖其他样式 */
+        height: 75vw !important;
+        max-width: 75vw !important;
+        max-height: 75vw !important;
+        order: 1; /* 棋盘放在上面 */
+        margin: 0 auto; /* 居中显示 */
+    }
+    
+    /* 信息面板在棋盘下面 */
+    .chess-info-panel {
+        order: 2;
+        margin-top: 10px;
+    }
+    
+    /* FEN操作按钮垂直排列 */
+    .fen-actions {
+        flex-direction: column;
+    }
+    
+    .fen-actions .action-button {
+        min-width: 100%;
+        margin-bottom: 5px;
+    }
+    
+    /* 手机端字体调整 */
+    .chess-info-panel h3 {
+        font-size: 1.3em;
+    }
+    
+    .fen-display label {
+        font-size: 1em;
+    }
+    
+    .fen-text {
+        min-height: 70px;
+        font-size: 13px;
+        padding: 10px;
+    }
+    
+    .fen-actions .action-button {
+        padding: 10px 6px;
+        font-size: 13px;
+    }
+    
+    /* 手机端棋子字体大小 */
+    .chess-square {
+        font-size: min(10vw, 35px);
+    }
+    
+    /* 手机端切换到聊天按钮 */
+    .fullscreen-controls {
+        position: sticky;
+        bottom: 0;
+        padding: 10px;
+        margin-top: 20px; /* 恢复与上方内容的间距 */
+        border-top: 1px solid var(--border-color);
+    }
+    
+    .fullscreen-controls .action-button {
+        min-width: 100%;
+        padding: 12px;
+        font-size: 15px;
+    }
+}
+
+/* 平板端样式 */
+@media (min-width: 768px) and (max-width: 1024px) {
+    .chess-board-area {
+        flex-direction: row;
+        align-items: flex-start;
+        justify-content: center;
+    }
+    
+    .chess-info-panel {
+        width: 300px;
+        flex-shrink: 0;
+    }
+    
+    .chess-board {
+        width: min(60vw, 500px);
+        height: min(60vw, 500px);
+    }
+}
+
+/* 桌面端样式 */
+@media (min-width: 1025px) {
+    .chess-board-area {
+        flex-direction: row;
+        align-items: flex-start;
+        justify-content: center;
+    }
+    
+    .chess-info-panel {
+        width: 350px;
+        flex-shrink: 0;
+        margin-left: 20px;
+    }
+    
+    .chess-board {
+        width: min(50vw, 500px); /* 限制最大宽度为500px */
+        height: min(50vw, 500px);
+    }
+}
+
+/* 高亮答案内容的样式 */
+.highlight-box {
+    background-color: #fff3cd; /* 浅黄色背景 */
+    color: #664d03; /* 深色文本 */
+    padding: 0.2em 0.5em;
+    border-radius: 4px;
+    font-weight: bold;
+    border: 1px solid #ffeeba;
+}
+
+body.dark-mode .highlight-box {
+    background-color: #4a4a00; /* 暗色模式下的深色背景 */
+    color: #ffeb3b; /* 暗色模式下的亮色文本 */
+    border-color: #808000;
+}
+/* Prompt Select Styles */
+#prompt-select {
+    width: 100%;
+    padding: 8px;
+    border: 1px solid var(--border-color);
+    background-color: var(--input-bg-color);
+    color: var(--text-color);
+    border-radius: 4px;
+    font-size: 14px;
+}
+
+#prompt-select:focus {
+    outline: none;
+    border-color: var(--accent-color);
+    box-shadow: 0 0 0 2px rgba(0, 123, 255, 0.25);
+}
+
+/* 历史记录区样式 */
+.history-mode {
+    display: none; /* 默认隐藏 */
+    flex-direction: column;
+    height: 100%;
+    box-sizing: border-box;
+    overflow-y: auto; /* 允许垂直滚动 */
+}
+
+.history-mode.active {
+    display: flex; /* 激活时显示 */
+}
+
+.history-list-container {
+    flex-grow: 1;
+    overflow-y: auto;
+    padding: 10px 15px;
+}
+
+.history-item {
+    padding: 15px;
+    border-bottom: 1px solid var(--border-color);
+    cursor: pointer;
+    transition: background-color 0.3s ease;
+}
+
+.history-item:hover {
+    background-color: var(--bg-color);
+}
+
+.history-item-title {
+    font-weight: 600;
+    color: var(--text-color);
+    margin-bottom: 5px;
+    font-size: 16px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.history-item-time {
+    font-size: 12px;
+    color: var(--text-secondary-color);
+}
+
+/* 历史记录列表项的布局 */
+.history-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 15px;
+    border-bottom: 1px solid var(--border-color);
+    cursor: pointer;
+    transition: background-color 0.3s ease;
+    position: relative; /* 用于定位操作菜单 */
+}
+
+.history-item:hover {
+    background-color: var(--bg-color);
+}
+
+.history-info {
+    flex-grow: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden; /* 确保标题和日期不会溢出 */
+}
+
+.history-title {
+    font-weight: 600;
+    color: var(--text-color);
+    margin-bottom: 5px;
+    font-size: 16px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.history-date {
+    font-size: 12px;
+    color: var(--text-secondary-color);
+}
+
+/* 历史记录操作区域 */
+.history-actions {
+    display: flex;
+    align-items: center;
+    gap: 5px; /* 图标和按钮之间的间距 */
+    position: relative; /* 用于定位下拉菜单 */
+    flex-shrink: 0; /* 防止被压缩 */
+}
+
+/* 置顶图标 */
+.pinned-icon {
+    color: var(--primary-color); /* 置顶图标颜色 */
+    font-size: 20px;
+    margin-right: 5px;
+}
+
+/* 置顶的历史项的特殊样式 */
+.history-item.is-pinned {
+    background-color: rgba(var(--primary-color-rgb), 0.1); /* 浅色背景 */
+    border-left: 4px solid var(--primary-color); /* 左侧强调边框 */
+    padding-left: 11px; /* 调整内边距以适应边框 */
+}
+
+/* 历史记录操作按钮 (more_vert) */
+.history-options-button {
+    background: none;
+    border: none;
+    color: var(--text-secondary-color);
+    font-size: 20px;
+    cursor: pointer;
+    padding: 5px;
+    border-radius: 50%;
+    transition: background-color 0.3s ease, color 0.3s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.history-options-button:hover {
+    background-color: rgba(var(--primary-color-rgb), 0.1);
+    color: var(--primary-color);
+}
+
+/* 历史记录操作菜单 */
+.history-options-menu {
+    position: absolute;
+    top: 100%; /* 位于按钮下方 */
+    right: 0;
+    background-color: var(--surface-color);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    box-shadow: 0 4px 12px var(--shadow-color);
+    min-width: 120px;
+    z-index: 10;
+    display: flex;
+    flex-direction: column;
+    /* overflow: hidden; */ /* 暂时移除，排查底部选项显示不全的问题 */
+}
+
+.history-options-menu .menu-item {
+    background: none;
+    border: none;
+    padding: 10px 15px;
+    text-align: left;
+    width: 100%;
+    cursor: pointer;
+    color: var(--text-color);
+    font-size: 14px;
+    transition: background-color 0.2s ease;
+}
+
+.history-options-menu .menu-item:hover {
+    background-color: var(--bg-color);
+}
+
+/* 移动端适配 */
+@media (max-width: 768px) {
+    .history-item {
+        padding: 10px;
+    }
+
+    .history-title {
+        font-size: 14px;
+    }
+
+    .history-date {
+        font-size: 11px;
+    }
+
+    .history-options-button {
+        font-size: 18px;
+        padding: 3px;
+    }
+
+    .pinned-icon {
+        font-size: 18px;
+    }
+
+    .history-options-menu {
+        min-width: 100px;
+    }
+
+    .history-options-menu .menu-item {
+        padding: 8px 12px;
+        font-size: 13px;
+    }
+}
+
+/* 任务T7: 工具调用状态UI样式 */
+.tool-call-status {
+    background-color: var(--bg-color);
+    padding: 12px 18px;
+    border-radius: 8px;
+    margin-bottom: 10px;
+    font-family: var(--font-family);
+    color: var(--text-secondary-color);
+    font-size: 0.9em;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    border: 1px solid var(--border-color);
+}
+
+
+/* =================================
+   Image Modal Styles
+   ================================= */
+
+.modal {
+    display: none; /* 由 JS 直接控制 display: flex 来显示 */
+    position: fixed;
+    z-index: 1000;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    background-color: var(--modal-backdrop-color);
+    justify-content: center;
+    align-items: center;
+    /* 备注: 平滑过渡效果(opacity)需要JS配合.
+       当前JS直接修改display, 无法触发CSS transition.
+       为确保功能正常, 暂时移除过渡效果. */
+}
+
+.modal-content {
+    background-color: var(--surface-color);
+    color: var(--text-color);
+    border-radius: 12px;
+    box-shadow: 0 8px 30px var(--shadow-color);
+    width: 90%;
+    max-width: 1200px;
+    height: 90vh;
+    display: flex;
+    flex-direction: column;
+    position: relative;
+    padding: 20px;
+    box-sizing: border-box;
+}
+
+.modal-content .close-button {
+    position: absolute;
+    top: 15px;
+    right: 20px;
+    color: var(--text-secondary-color);
+    font-size: 32px;
+    font-weight: bold;
+    cursor: pointer;
+    transition: color 0.3s ease;
+    z-index: 10;
+}
+
+.modal-content .close-button:hover {
+    color: var(--danger-color);
+}
+
+.modal-title {
+    margin: 0 0 15px 0;
+    padding-bottom: 10px;
+    border-bottom: 1px solid var(--border-color);
+    color: var(--primary-color);
+    text-align: center;
+    font-size: 22px;
+}
+
+.modal-image-container {
+    flex-grow: 1;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    overflow: hidden; /* 确保图片不会溢出此容器 */
+    position: relative;
+    background-color: var(--bg-color);
+    border-radius: 8px;
+}
+
+#modal-image-display {
+    max-width: 100%;
+    max-height: 100%;
+    object-fit: contain; /* 核心：确保图片完整显示且不变形 */
+    border-radius: 4px;
+    transition: transform 0.3s ease;
+    /* 为移动端手势操作提供更好的体验 */
+    touch-action: manipulation;
+}
+
+.modal-info {
+    margin-top: 15px;
+    padding-top: 15px;
+    border-top: 1px solid var(--border-color);
+    font-size: 14px;
+    color: var(--text-secondary-color);
+}
+
+.modal-info p {
+    margin: 5px 0;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.modal-info i {
+    color: var(--primary-color);
+}
+
+.modal-info a {
+    color: var(--primary-color);
+    text-decoration: none;
+    word-break: break-all;
+}
+
+.modal-info a:hover {
+    text-decoration: underline;
+}
+
+.modal-actions {
+    position: absolute;
+    bottom: 20px;
+    right: 20px;
+    display: flex;
+    gap: 10px;
+}
+
+.modal-actions .action-button {
+    padding: 10px 15px;
+    font-size: 14px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+/* 响应式设计 */
+@media (max-width: 768px) {
+    .modal-content {
+        width: 95%;
+        height: 85vh;
+        padding: 15px;
+    }
+    
+    @media (max-width: 768px) {
+        /* 在手机端隐藏图片模态框中的“原始链接”信息行 */
+        .modal-info p:has(#modal-image-info-url) {
+            display: none;
+        }
+    }
+
+    .modal-title {
+        font-size: 18px;
+    }
+
+
+    .modal-actions {
+        bottom: 15px;
+        right: 15px;
+    }
+
+    .modal-actions .action-button.copy-button {
+        display: none; /* 在小屏幕上隐藏复制链接按钮 */
+    }
+}
+
+/* =================================
+   History Panel Controls
+   ================================= */
+
+/* 更新日志/历史记录头部以支持 flex 布局 */
+.log-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 15px;
+    background-color: var(--surface-color);
+    border-bottom: 1px solid var(--border-color);
+}
+
+.history-controls {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+}
+
+/* 通用图标按钮样式 */
+.icon-button {
+    background: none;
+    border: none;
+    color: var(--text-secondary-color);
+    font-size: 20px;
+    cursor: pointer;
+    padding: 5px;
+    border-radius: 50%;
+    transition: background-color 0.3s ease, color 0.3s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.icon-button:hover {
+    background-color: rgba(var(--primary-color-rgb), 0.1);
+    color: var(--primary-color);
+}
+
+/* 滑动开关样式 */
+.switch {
+    position: relative;
+    display: inline-block;
+    width: 40px;
+    height: 24px;
+}
+
+.switch input {
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+
+.slider {
+    position: absolute;
+    cursor: pointer;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: #ccc;
+    transition: .4s;
+}
+
+.slider:before {
+    position: absolute;
+    content: "";
+    height: 16px;
+    width: 16px;
+    left: 4px;
+    bottom: 4px;
+    background-color: white;
+    transition: .4s;
+}
+
+input:checked + .slider {
+    background-color: var(--primary-color);
+}
+
+input:focus + .slider {
+    box-shadow: 0 0 1px var(--primary-color);
+}
+
+input:checked + .slider:before {
+    transform: translateX(16px);
+}
+
+/* 圆形滑块 */
+.slider.round {
+    border-radius: 24px;
+}
+
+.slider.round:before {
+    border-radius: 50%;
+}
+
+/* =================================
+   Batch History Deletion Styles
+   ================================= */
+
+/* Style for the danger button (e.g., delete) */
+.icon-button.danger:hover {
+    background-color: rgba(var(--danger-color-rgb), 0.1);
+    color: var(--danger-color);
+}
+
+
+/* When in select mode, prevent the main click from loading the session */
+.history-list-container.select-mode .history-item {
+    cursor: default;
+}
+
+@media (min-width: 769px) and (max-width: 1200px) and (orientation: landscape) {
+    /* 1. 让棋盘继续用正方形，但尺寸由“格子”决定 */
+    .chess-board {
+        width: unset !important;
+        height: unset !important;
+        grid-template-columns: repeat(8, 52px); /* 每格 60 px */
+        grid-template-rows: repeat(8, 52px);
+        margin-left: -30px;   /* 往左挪 20 px */
+    }
+
+    /* 2. 棋子图标同步缩小，防止溢出 */
+    .chess-square {
+        font-size: 40px; /* 原来 min(8vw,40px) → 固定 40 px */
+    }
+
+    @media (min-width: 769px) and (max-width: 1200px) and (orientation: landscape) {
+    /* 1. 棋盘已放大，现在推 FEN 面板 */
+    .chess-info-panel {
+        width: 300px !important;        /* 原来 240→280，变大 */
+        margin-left: 20px !important;   /* 再往右推 30 px */
+        flex-shrink: 0 !important;
+    }
+}
+}
+
+/* 升变选项样式 */
+.promotion-option {
+    background-color: #ffeb3b !important;
+    border: 2px solid #ff9800 !important;
+}
+
+.promotion-piece {
+    transform: scale(1.2);
+    cursor: pointer;
+}
+
+.promotion-piece:hover {
+    transform: scale(1.3);
+    transition: transform 0.2s;
+}
+
+/* 国际象棋游戏结束模态框样式 */
+.chess-game-over-modal {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.7);
+    display: none;
+    justify-content: center;
+    align-items: center;
+    z-index: 1000;
+}
+
+.chess-game-over-content {
+    background: white;
+    padding: 2rem;
+    border-radius: 8px;
+    text-align: center;
+    max-width: 400px;
+    width: 90%;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+}
+
+.chess-game-over-content h2 {
+    margin: 0 0 1rem 0;
+    color: #333;
+}
+
+.chess-game-over-content p {
+    margin: 0 0 2rem 0;
+    font-size: 1.2rem;
+    color: #666;
+}
+
+.chess-game-over-buttons {
+    margin-top: 1rem;
+    display: flex;
+    gap: 1rem;
+    justify-content: center;
+}
+
+.chess-btn-primary {
+    background: #007bff;
+    color: white;
+    border: none;
+    padding: 0.5rem 1rem;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 1rem;
+    transition: background-color 0.2s;
+}
+
+.chess-btn-primary:hover {
+    background: #0056b3;
+}
+
+.chess-btn-secondary {
+    background: #6c757d;
+    color: white;
+    border: none;
+    padding: 0.5rem 1rem;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 1rem;
+    transition: background-color 0.2s;
+}
+
+.chess-btn-secondary:hover {
+    background: #545b62;
+}
+/* Chess AI Button Styles */
+.chess-ai-button {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    border: none;
+    padding: 8px 16px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 14px;
+    margin-top: 8px;
+    width: 100%;
+    transition: background 0.3s ease, opacity 0.3s ease;
+}
+
+.chess-ai-button:hover {
+    background: linear-gradient(135deg, #764ba2 0%, #667eea 100%);
+}
+
+.chess-ai-button:disabled {
+    background: #999;
+    cursor: not-allowed;
+    opacity: 0.7;
+}
+/* AI走法选择模态框样式 */
+.chess-ai-choice-modal {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.75);
+    display: none;
+    justify-content: center;
+    align-items: center;
+    z-index: 1001; /* 比游戏结束模态框更高一级 */
+}
+
+.chess-ai-choice-content {
+    background: #ffffff;
+    padding: 1.5rem 2rem;
+    border-radius: 12px;
+    text-align: left;
+    max-width: 500px;
+    width: 90%;
+    box-shadow: 0 5px 25px rgba(0, 0, 0, 0.4);
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+.chess-ai-choice-content h2 {
+    margin: 0 0 0.5rem 0;
+    color: #2c3e50;
+    text-align: center;
+    font-size: 1.5rem;
+}
+
+.ai-analysis-container {
+    background-color: #f8f9fa;
+    border: 1px solid #e9ecef;
+    border-radius: 8px;
+    padding: 1rem;
+    max-height: 200px;
+    overflow-y: auto;
+}
+
+.ai-analysis-container p {
+    margin: 0 0 0.5rem 0;
+    font-weight: bold;
+    color: #495057;
+}
+
+.ai-analysis-text {
+    font-size: 0.95rem;
+    line-height: 1.6;
+    color: #343a40;
+    white-space: pre-wrap; /* 保留换行和空格 */
+}
+
+.ai-move-choices {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+
+.ai-move-choices p {
+    margin: 0;
+    font-weight: bold;
+    color: #495057;
+}
+
+.ai-move-choice {
+    display: block;
+    background-color: #f1f3f5;
+    padding: 0.75rem 1rem;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: background-color 0.2s, box-shadow 0.2s;
+    border: 1px solid #dee2e6;
+}
+
+.ai-move-choice:hover {
+    background-color: #e9ecef;
+}
+
+.ai-move-choice input[type="radio"] {
+    margin-right: 0.75rem;
+    transform: scale(1.2);
+}
+
+.chess-ai-choice-buttons {
+    margin-top: 1rem;
+    display: flex;
+    gap: 1rem;
+    justify-content: flex-end; /* 按钮靠右对齐 */
+}
+
+/* 继承已有的按钮样式，并为禁用状态添加特定样式 */
+.chess-btn-primary:disabled {
+    background-color: #a0c7ff;
+    cursor: not-allowed;
+}
+
+/* ===== 棋局保存加载样式 ===== */
+
+/* 模态框基础样式 */
+.chess-modal {
+    display: none;
+    position: fixed;
+    z-index: 10000;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    overflow: auto;
+    background-color: rgba(0,0,0,0.7);
+    align-items: center;
+    justify-content: center;
+    -webkit-backdrop-filter: blur(5px);
+    backdrop-filter: blur(5px);
+}
+
+.chess-modal-content {
+    background-color: #2d3748;
+    color: #e2e8f0;
+    padding: 24px;
+    border: 1px solid #4a5568;
+    border-radius: 12px;
+    width: 90%;
+    max-width: 600px;
+    max-height: 80vh;
+    box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.5);
+    display: flex;
+    flex-direction: column;
+}
+
+.chess-modal-content h2 {
+    margin: 0 0 20px 0;
+    color: #f7fafc;
+    font-size: 1.5rem;
+    border-bottom: 2px solid #4a5568;
+    padding-bottom: 10px;
+}
+
+/* 搜索框样式 */
+.search-container {
+    margin-bottom: 16px;
+}
+
+#chess-load-search {
+    width: 100%;
+    padding: 12px 16px;
+    background-color: #4a5568;
+    border: 1px solid #718096;
+    border-radius: 8px;
+    color: #e2e8f0;
+    font-size: 14px;
+    transition: all 0.2s ease;
+}
+
+#chess-load-search:focus {
+    outline: none;
+    border-color: #63b3ed;
+    box-shadow: 0 0 0 3px rgba(99, 179, 237, 0.1);
+}
+
+#chess-load-search::placeholder {
+    color: #a0aec0;
+}
+
+/* 游戏列表样式 */
+.chess-load-list {
+    flex: 1;
+    overflow-y: auto;
+    max-height: 400px;
+    margin-bottom: 20px;
+    border: 1px solid #4a5568;
+    border-radius: 8px;
+    background-color: #1a202c;
+}
+
+.chess-load-item {
+    padding: 16px;
+    border-bottom: 1px solid #4a5568;
+    cursor: pointer;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    transition: all 0.2s ease;
+}
+
+.chess-load-item:hover {
+    background-color: #2d3748;
+    transform: translateX(4px);
+}
+
+.chess-load-item:last-child {
+    border-bottom: none;
+}
+
+.game-info {
+    flex: 1;
+}
+
+.game-name {
+    display: block;
+    font-weight: 600;
+    color: #f7fafc;
+    margin-bottom: 4px;
+    font-size: 1rem;
+}
+
+.game-date {
+    font-size: 0.875rem;
+    color: #a0aec0;
+}
+
+.load-game-btn {
+    background-color: #4299e1;
+    color: white;
+    border: none;
+    padding: 8px 16px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 0.875rem;
+    transition: background-color 0.2s ease;
+    white-space: nowrap;
+}
+
+.load-game-btn:hover {
+    background-color: #3182ce;
+}
+
+.no-games {
+    text-align: center;
+    color: #a0aec0;
+    padding: 40px 20px;
+    font-style: italic;
+}
+
+/* 模态框按钮组 */
+.chess-modal-buttons {
+    display: flex;
+    justify-content: flex-end;
+    gap: 12px;
+}
+
+.chess-btn-secondary {
+    background-color: #718096;
+    color: white;
+    border: none;
+    padding: 10px 20px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 0.875rem;
+    transition: background-color 0.2s ease;
+}
+
+.chess-btn-secondary:hover {
+    background-color: #4a5568;
+}
+
+/* 响应式设计 */
+@media (max-width: 768px) {
+    .chess-modal-content {
+        width: 95%;
+        padding: 16px;
+    }
+    
+    .chess-load-item {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 12px;
+    }
+    
+    .game-actions {
+        align-self: flex-end;
+    }
+}
+
+/* 按钮加载状态 */
+.action-button:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+.action-button .fa-spinner {
+    margin-right: 8px;
+}
+
+/* --- 国际象棋加载模态框按钮样式优化 --- */
+
+/* 1. 为所有按钮设置一个统一的基础样式 */
+.game-actions .load-game-btn,
+.game-actions .rename-game-btn,
+.game-actions .delete-game-btn {
+    padding: 8px 16px;       /* 统一内边距 */
+    border: none;            /* 移除边框 */
+    border-radius: 5px;      /* 统一圆角 */
+    color: white;            /* 统一文字颜色 */
+    font-size: 14px;         /* 统一字体大小 */
+    font-weight: bold;       /* 字体加粗 */
+    cursor: pointer;
+    margin-left: 8px;        /* 按钮之间的间距 */
+    transition: background-color 0.2s ease, transform 0.1s ease; /* 平滑过渡效果 */
+    white-space: nowrap;     /* 防止文字换行 */
+}
+
+/* 鼠标悬停时轻微放大效果 */
+.game-actions .load-game-btn:hover,
+.game-actions .rename-game-btn:hover,
+.game-actions .delete-game-btn:hover {
+    transform: scale(1.05);
+}
+
+/* 2. 定义不同按钮的功能性颜色 */
+
+/* 加载按钮 (主操作) - 使用您已有的 .chess-btn-primary 类 */
+.game-actions .chess-btn-primary {
+    background-color: #007bff; /* 蓝色 */
+}
+.game-actions .chess-btn-primary:hover {
+    background-color: #0056b3; /* 深蓝色 */
+}
+
+/* 重命名按钮 (次要操作) - 使用您已有的 .chess-btn-secondary 类 */
+.game-actions .chess-btn-secondary {
+    background-color: #6c757d; /* 灰色 */
+}
+.game-actions .chess-btn-secondary:hover {
+    background-color: #5a6268; /* 深灰色 */
+}
+
+/* 删除按钮 (危险操作) - 使用您已有的 .chess-btn-danger 类 */
+.game-actions .chess-btn-danger {
+    background-color: #dc3545; /* 红色 */
+}
+.game-actions .chess-btn-danger:hover {
+    background-color: #c82333; /* 深红色 */
+}
+
+/* 数据文件预览特殊样式 */
+.file-preview-card.data-file {
+    border: 2px solid #4CAF50;
+    background: #f8fff8;
+}
+
+.data-file-preview {
+    text-align: center;
+    padding: 10px;
+}
+
+.data-file-preview i {
+    font-size: 24px;
+    margin-bottom: 5px;
+}
+
+.data-file-preview p {
+    margin: 0;
+    font-size: 12px;
+    word-break: break-all;
+}
+
+/* style.css (最终的、带完整颜色定义的美学方案) */
+
+/* --- 🎯 核心修复：定义光明与黑暗模式的“调色盘” --- */
+:root {
+    /* --- 光明模式 (默认) --- */
+    --fm-bg-primary: #ffffff;       /* 主背景色 (白) */
+    --fm-bg-secondary: #f8f9fa;      /* 次背景色 (淡灰) */
+    --fm-bg-hover: #e9ecef;          /* 悬停背景色 */
+    --fm-border-color: #dee2e6;     /* 边框颜色 */
+    --fm-text-primary: #212529;      /* 主文字颜色 (深灰) */
+    --fm-text-secondary: #6c757d;    /* 次文字颜色 (中灰) */
+    --fm-accent-color: #007bff;      /* 强调色 (蓝) */
+    --fm-danger-color: #dc3545;      /* 危险色 (红) */
+    --fm-shadow-color: rgba(0, 0, 0, 0.1);
+}
+
+body.dark-mode {
+    /* --- 黑暗模式 --- */
+    --fm-bg-primary: #212529;       /* 主背景色 (深) */
+    --fm-bg-secondary: #343a40;      /* 次背景色 (更深) */
+    --fm-bg-hover: #495057;          /* 悬停背景色 */
+    --fm-border-color: #495057;     /* 边框颜色 */
+    --fm-text-primary: #f8f9fa;      /* 主文字颜色 (淡灰) */
+    --fm-text-secondary: #adb5bd;    /* 次文字颜色 (中灰) */
+    --fm-accent-color: #4dabf7;      /* 强调色 (亮蓝) */
+    --fm-danger-color: #ff6b6b;      /* 危险色 (亮红) */
+    --fm-shadow-color: rgba(0, 0, 0, 0.3);
+}
+
+
+/* --- 浮窗式文件管理器 (现在将使用上面的调色盘) --- */
+
+.file-manager-modal {
+    display: none; position: fixed; z-index: 1000;
+    left: 0; top: 0; width: 100%; height: 100%;
+    background-color: rgba(0, 0, 0, 0.6);
+    -webkit-backdrop-filter: blur(4px);
+    backdrop-filter: blur(4px);
+    align-items: center; justify-content: center;
+    animation: fm-bg-fade-in 0.3s ease;
+}
+@keyframes fm-bg-fade-in { from { opacity: 0; } to { opacity: 1; } }
+
+.file-manager-content {
+    background-color: var(--fm-bg-secondary);
+    color: var(--fm-text-primary);
+    padding: 24px;
+    border: 1px solid var(--fm-border-color);
+    border-radius: 12px;
+    width: 90%; max-width: 650px; max-height: 85vh;
+    box-shadow: 0 10px 30px var(--fm-shadow-color);
+    display: flex; flex-direction: column;
+    animation: fm-content-slide-up 0.4s cubic-bezier(0.25, 1, 0.5, 1);
+}
+@keyframes fm-content-slide-up { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+
+.fm-header {
+    display: flex; justify-content: space-between; align-items: center;
+    margin-bottom: 16px; padding-bottom: 16px;
+    border-bottom: 1px solid var(--fm-border-color);
+}
+.fm-header h2 { margin: 0; font-size: 1.25rem; }
+
+.fm-close-btn {
+    background: none; border: none; font-size: 1.8rem; line-height: 1;
+    color: var(--fm-text-secondary); cursor: pointer;
+    transition: color 0.2s ease, transform 0.2s ease;
+}
+.fm-close-btn:hover { color: var(--fm-text-primary); transform: rotate(90deg); }
+
+.fm-search-container { margin-bottom: 16px; }
+#file-manager-search {
+    width: 100%; padding: 10px 14px;
+    background-color: var(--fm-bg-primary);
+    border: 1px solid var(--fm-border-color);
+    border-radius: 6px; color: var(--fm-text-primary); font-size: 14px;
+    transition: border-color 0.2s, box-shadow 0.2s;
+}
+#file-manager-search:focus {
+    outline: none; border-color: var(--fm-accent-color);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--fm-accent-color) 20%, transparent);
+}
+
+.fm-list-container {
+    flex: 1; overflow-y: auto;
+    border: 1px solid var(--fm-border-color);
+    border-radius: 8px;
+    background-color: var(--fm-bg-primary);
+}
+
+.fm-list-item {
+    padding: 12px 16px; border-bottom: 1px solid var(--fm-border-color);
+    display: flex; justify-content: space-between; align-items: center;
+    transition: background-color 0.2s ease;
+}
+.fm-list-item:hover { background-color: var(--fm-bg-hover); }
+.fm-list-item:last-child { border-bottom: none; }
+
+.fm-file-info { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+.fm-file-name { font-weight: 500; word-break: break-all; }
+.fm-session-tag { font-size: 0.75rem; color: var(--fm-text-secondary); margin-top: 4px; }
+
+.fm-file-actions { display: flex; align-items: center; gap: 16px; margin-left: 16px; }
+.fm-action-icon {
+    background: none; border: none; cursor: pointer;
+    color: var(--fm-text-secondary); font-size: 16px;
+    transition: color 0.2s ease, transform 0.1s ease;
+}
+.fm-action-icon:hover { transform: scale(1.15); }
+.fm-action-icon.download-button:hover { color: var(--fm-accent-color); }
+.fm-action-icon.rename-button:hover { color: var(--fm-text-primary); }
+.fm-action-icon.delete-button:hover { color: var(--fm-danger-color); }
+
+.fm-footer { margin-top: 20px; display: flex; justify-content: flex-end; }
+/* ... (您的 .fm-btn 样式可以放在这里，它会自动使用变量) ... */

@@ -1,5 +1,5 @@
-import { Logger } from '../utils/logger.js';
 import { ApplicationError, ErrorCodes } from '../utils/error-boundary.js';
+import { Logger } from '../utils/logger.js';
 
 /**
  * @fileoverview Implements a screen recorder for capturing and processing screen frames.
@@ -135,7 +135,10 @@ export class ScreenRecorder {
                     if (this.validateFrame(base64Data)) {
                         this.frameCount++;
                         Logger.debug(`Screen frame #${this.frameCount} captured`);
-                        this.onScreenData(base64Data);
+                        this.onScreenData({
+                            mimeType: 'image/jpeg',
+                            data: base64Data
+                        });
                     }
                 }
             } catch (error) {

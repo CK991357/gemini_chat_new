@@ -1,39 +1,90 @@
+import { AttachmentManager } from './attachments/file-attachment.js'; // T2 新增
 import { AudioRecorder } from './audio/audio-recorder.js';
 import { AudioStreamer } from './audio/audio-streamer.js';
+import { ChatApiHandler } from './chat/chat-api-handler.js';
+import * as chatUI from './chat/chat-ui.js'; // T11: 导入聊天UI模块
+import { initializeChessCore } from './chess/chess-core.js';
 import { CONFIG } from './config/config.js';
+import { initializePromptSelect } from './config/prompt-manager.js';
 import { MultimodalLiveClient } from './core/websocket-client.js';
+import { HistoryManager } from './history/history-manager.js';
+import { createVisionHistoryManager } from './history/vision-history-manager.js'; // 修复：导入 Vision 历史管理器创建函数
+import { initImageManager } from './image-gallery/image-manager.js'; // 导入 ImageManager 的初始化函数
+import { ScreenHandler } from './media/screen-handlers.js'; // T4: 导入 ScreenHandler
+import { VideoHandler } from './media/video-handlers.js'; // T3: 导入 VideoHandler
 import { ToolManager } from './tools/tool-manager.js'; // 确保导入 ToolManager
+import { initializeTranslationCore } from './translation/translation-core.js';
 import { Logger } from './utils/logger.js';
-import { ScreenRecorder } from './video/screen-recorder.js';
-import { VideoManager } from './video/video-manager.js';
+import { displayVisionMessage, initializeVisionCore } from './vision/vision-core.js'; // T8: 新增, 导入 displayVisionMessage 和 initializeVisionCore
+
+// ✨ 1. 新增：导入工具定义，这是让Skill模式工作的关键
+
+// 🚀 新增导入
+import { skillContextManager } from './tool-spec-system/skill-context-manager.js';
+import { enhancedToolDefinitions } from './tools_mcp/enhanced-tool-definitions.js';
+
+// 🚀 增强的模型工具管理器
+class EnhancedModelToolManager {
+  constructor() {
+    this.modelToolsCache = new Map();
+  }
+
+  /**
+   * 获取当前模型的增强工具配置
+   */
+  async getEnhancedToolsForModel(modelName) {
+    if (this.modelToolsCache.has(modelName)) {
+      return this.modelToolsCache.get(modelName);
+    }
+
+    const modelConfig = CONFIG.API.AVAILABLE_MODELS.find(m => m.name === modelName);
+    if (!modelConfig || !modelConfig.tools) {
+      return [];
+    }
+
+    let enhancedTools;
+    if (modelConfig.isGemini) {
+      enhancedTools = await enhancedToolDefinitions.getEnhancedTools(modelConfig.tools, modelName);
+    } else if (modelConfig.isZhipu) {
+      enhancedTools = await enhancedToolDefinitions.getEnhancedTools(modelConfig.tools, modelName);
+    } else {
+      enhancedTools = await enhancedToolDefinitions.getEnhancedTools(modelConfig.tools, modelName);
+    }
+
+    this.modelToolsCache.set(modelName, enhancedTools);
+    return enhancedTools;
+  }
+
+  clearCache() {
+    this.modelToolsCache.clear();
+  }
+}
+
+// 创建全局实例
+export const enhancedModelToolManager = new EnhancedModelToolManager();
+
+// 🎯 获取基础技能管理器的函数
+// 这个函数应该在技能系统初始化后调用
+window.getBaseSkillManager = function() {
+  // 🎯 关键修复：返回 skill-manager.js 中导出的 Promise，确保单例
+  const { skillManagerPromise } = window.skillManagerModule || {};
+  if (skillManagerPromise) {
+    return skillManagerPromise;
+  }
+  
+  // 降级方案：返回一个简单的技能管理器
+  return Promise.resolve({
+    findRelevantSkills: (userQuery, context = {}) => {
+      console.log(`[BaseSkillManager] 降级查询: ${userQuery}`);
+      return [];
+    }
+  });
+};
 
 /**
  * @fileoverview Main entry point for the application.
  * Initializes and manages the UI, audio, video, and WebSocket interactions.
  */
-
-const UNIVERSAL_TRANSLATION_SYSTEM_PROMPT = `You are a professional translation assistant. Only focus on the translation task and ignore other tasks! Strictly adhere to the following: only output the translated text. Do not include any additional prefixes, explanations, or introductory phrases, such as "Okay, here is the translation:" ,"Sure, I can help you with that!"or "Here is your requested translation:" and so on.
-
-## Translation Requirements
-
-1. !!!Important!Strictly adhere to the following: only output the translated text. Do not include any other words which are no related to the translation,such as polite expressions, additional prefixes, explanations, or introductory phrases.
-2. Word Choice: Do not translate word-for-word rigidly. Instead, use idiomatic expressions and common phrases in the target language (e.g., idioms, internet slang).
-3. Sentence Structure: Do not aim for sentence-by-sentence translation. Adjust sentence length and word order to better suit the expression habits of the target language.
-4. Punctuation Usage: Use punctuation marks accurately (including adding and modifying) according to different expression habits.
-5. Format Preservation: Only translate the text content from the original. Content that cannot be translated should remain as is. Do not add extra formatting to the translated content.
-`;
-
-const VISION_SYSTEM_PROMPT = `你是一个顶级的多模态视觉分析专家，你的首要任务是精确、深入地分析用户提供的视觉材料（如图片、图表、截图、视频等），并根据视觉内容回答问题。
-所有回复信息以Markdown格式响应。
-严格遵循以下规则进行所有响应：
-1. **Markdown格式化：**始终使用标准的Markdown语法进行文本、代码块和列表。
-2. **LaTeX数学公式：**对于所有数学公式，使用正确的LaTeX语法。
-    - 行内数学公式应使用单个美元符号括起来（例如，$\sin^2\theta + \cos^2\theta = 1$）。
-    - 展示数学公式应使用双美元符号括起来（例如，$$\sum_{i=1}^n i = \frac{n(n+1)}{2}$$）。
-    - 确保所有LaTeX命令拼写正确且正确关闭（例如，\boldsymbol{\sin}而不是\boldsymbol{\sin}}）。
-3. **简洁性：**提供直接答案，无需不必要的对话填充、开场白或礼貌用语。
-4. **准确性：**确保内容准确并直接回答用户的问题。
-`;
 
 // DOM Elements
 const logsContainer = document.getElementById('logs-container'); // 用于原始日志输出
@@ -47,7 +98,6 @@ const connectButton = document.getElementById('connect-button');
 const cameraButton = document.getElementById('camera-button');
 const stopVideoButton = document.getElementById('stop-video'); // 使用正确的ID
 const screenButton = document.getElementById('screen-button');
-// const screenIcon = document.getElementById('screen-icon'); // 删除，不再需要
 const screenContainer = document.getElementById('screen-preview-container'); // 更新 ID
 const screenPreview = document.getElementById('screen-preview-element'); // 更新 ID
 const _inputAudioVisualizer = document.getElementById('input-audio-visualizer'); // 保持，可能用于输入音频可视化
@@ -56,8 +106,8 @@ const voiceSelect = document.getElementById('voice-select');
 const fpsInput = document.getElementById('fps-input');
 const configToggle = document.getElementById('toggle-config');
 const configContainer = document.querySelector('.control-panel');
+const promptSelect = document.getElementById('prompt-select');
 const systemInstructionInput = document.getElementById('system-instruction');
-systemInstructionInput.value = CONFIG.SYSTEM_INSTRUCTION.TEXT;
 const applyConfigButton = document.getElementById('apply-config');
 const responseTypeSelect = document.getElementById('response-type-select');
 const mobileConnectButton = document.getElementById('mobile-connect');
@@ -65,23 +115,24 @@ const interruptButton = document.getElementById('interrupt-button'); // 新增
 const newChatButton = document.getElementById('new-chat-button'); // 新增
 
 // 新增的 DOM 元素
+const chatModeBtn = document.getElementById('chat-mode-button');
 const themeToggleBtn = document.getElementById('theme-toggle');
 const toggleLogBtn = document.getElementById('toggle-log');
 const _logPanel = document.querySelector('.chat-container.log-mode');
 const clearLogsBtn = document.getElementById('clear-logs');
 const modeTabs = document.querySelectorAll('.mode-tabs .tab');
 const chatContainers = document.querySelectorAll('.chat-container');
+const historyContent = document.getElementById('history-list-container'); // 新增：历史记录面板
 
 // 新增媒体预览相关 DOM 元素
 const mediaPreviewsContainer = document.getElementById('media-previews');
-const videoPreviewContainer = document.getElementById('video-container'); // 对应 video-manager.js 中的 video-container
-const videoPreviewElement = document.getElementById('preview'); // 对应 video-manager.js 中的 preview
-const stopScreenButton = document.getElementById('stop-screen-button');
+const videoPreviewContainer = document.getElementById('video-container'); // 对应 websocket/video/video-manager.js 中的 video-container
+const videoPreviewElement = document.getElementById('preview'); // 对应 websocket/video/video-manager.js 中的 preview
+const stopScreenButton = document.getElementById('stop-screen-button'); // 确保 ID 正确
 
 // 附件相关 DOM 元素
 const attachmentButton = document.getElementById('attachment-button');
 const fileInput = document.getElementById('file-input');
-
 
 // 附件预览 DOM 元素
 const fileAttachmentPreviews = document.getElementById('file-attachment-previews');
@@ -91,6 +142,10 @@ const translationVoiceInputButton = document.getElementById('translation-voice-i
 const translationInputTextarea = document.getElementById('translation-input-text'); // 新增
 // 新增：聊天模式语音输入相关 DOM 元素
 const chatVoiceInputButton = document.getElementById('chat-voice-input-button');
+
+// 新增：翻译OCR相关 DOM 元素
+const translationOcrButton = document.getElementById('translation-ocr-button');
+const translationOcrInput = document.getElementById('translation-ocr-input');
 
 // 视觉模型相关 DOM 元素
 const visionModeBtn = document.getElementById('vision-mode-button');
@@ -102,13 +157,17 @@ const visionAttachmentButton = document.getElementById('vision-attachment-button
 const visionFileInput = document.getElementById('vision-file-input');
 const visionSendButton = document.getElementById('vision-send-button');
 
+// T3: 确保 flipCameraButton 存在
+const flipCameraButton = document.getElementById('flip-camera');
+
+// 🚀 新增：智能代理系统开关
+const agentModeToggle = document.getElementById('agent-mode-toggle');
 
 // Load saved values from localStorage
 const savedApiKey = localStorage.getItem('gemini_api_key');
 const savedVoice = localStorage.getItem('gemini_voice');
 const savedFPS = localStorage.getItem('video_fps');
 const savedSystemInstruction = localStorage.getItem('system_instruction');
-
 
 if (savedApiKey) {
     apiKeyInput.value = savedApiKey;
@@ -120,16 +179,24 @@ if (savedVoice) {
 if (savedFPS) {
     fpsInput.value = savedFPS;
 }
-if (savedSystemInstruction) {
-    systemInstructionInput.value = savedSystemInstruction;
-    CONFIG.SYSTEM_INSTRUCTION.TEXT = savedSystemInstruction;
-} else {
-    // 如果没有保存的系统指令，使用新的通用翻译系统指令作为默认值
-    systemInstructionInput.value = UNIVERSAL_TRANSLATION_SYSTEM_PROMPT;
-    CONFIG.SYSTEM_INSTRUCTION.TEXT = UNIVERSAL_TRANSLATION_SYSTEM_PROMPT;
-}
+// Note: The logic for loading saved system instructions is now handled by the prompt selection logic.
+// We will set the default prompt based on the new config structure.
 
 document.addEventListener('DOMContentLoaded', () => {
+    // 新增：初始化思维链开关
+    const reasoningCheckbox = document.getElementById('enable-reasoning-checkbox');
+    if (reasoningCheckbox) {
+        // 1. 初始化
+        const savedReasoningState = localStorage.getItem('geminiEnableReasoning') === 'true';
+        reasoningCheckbox.checked = savedReasoningState;
+
+        // 2. 监听变化并保存
+        reasoningCheckbox.addEventListener('change', () => {
+            localStorage.setItem('geminiEnableReasoning', reasoningCheckbox.checked);
+            showToast(`Gemini 思维链已${reasoningCheckbox.checked ? '开启' : '关闭'}`);
+        });
+    }
+
     // 配置 marked.js
     marked.setOptions({
       breaks: true, // 启用 GitHub Flavored Markdown 的换行符支持
@@ -166,14 +233,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
     if (savedTheme) {
         body.classList.add(savedTheme);
-        themeToggleBtn.textContent = savedTheme === 'dark-mode' ? 'dark_mode' : 'light_mode';
+        themeToggleBtn.innerHTML = savedTheme === 'dark-mode' ? '<i class="fa-solid fa-sun"></i>' : '<i class="fa-solid fa-moon"></i>';
     } else {
         if (globalThis.matchMedia && globalThis.matchMedia('(prefers-color-scheme: dark)').matches) {
             body.classList.add('dark-mode');
-            themeToggleBtn.textContent = 'dark_mode';
+            themeToggleBtn.innerHTML = '<i class="fa-solid fa-sun"></i>';
         } else {
             body.classList.add('light-mode');
-            themeToggleBtn.textContent = 'light_mode';
+            themeToggleBtn.innerHTML = '<i class="fa-solid fa-moon"></i>';
         }
     }
 
@@ -181,12 +248,12 @@ document.addEventListener('DOMContentLoaded', () => {
         if (body.classList.contains('dark-mode')) {
             body.classList.remove('dark-mode');
             body.classList.add('light-mode');
-            themeToggleBtn.textContent = 'light_mode';
+            themeToggleBtn.innerHTML = '<i class="fa-solid fa-moon"></i>';
             localStorage.setItem('theme', 'light-mode');
         } else {
             body.classList.remove('light-mode');
             body.classList.add('dark-mode');
-            themeToggleBtn.textContent = 'dark_mode';
+            themeToggleBtn.innerHTML = '<i class="fa-solid fa-sun"></i>';
             localStorage.setItem('theme', 'dark-mode');
         }
     });
@@ -196,20 +263,72 @@ document.addEventListener('DOMContentLoaded', () => {
         tab.addEventListener('click', () => {
             const mode = tab.dataset.mode;
 
+            // 只有当当前激活的顶层模式是聊天模式时，才移除视觉模式的激活状态
+            // 这样可以确保在视觉模式下切换子标签时不会丢失顶层激活状态
+            if (visionContainer && visionContainer.classList.contains('active') && 
+                (mode === 'log' || mode === 'history') && 
+                chatModeBtn.classList.contains('active')) {
+                visionContainer.classList.remove('active');
+                // 同时取消视觉主模式按钮的激活状态
+                visionModeBtn.classList.remove('active');
+            }
+
             // 移除所有 tab 和 chat-container 的 active 类
             modeTabs.forEach(t => t.classList.remove('active'));
             chatContainers.forEach(c => c.classList.remove('active'));
 
             // 添加当前点击 tab 和对应 chat-container 的 active 类
             tab.classList.add('active');
-            document.querySelector(`.chat-container.${mode}-mode`).classList.add('active');
+            const targetContainer = document.querySelector(`.chat-container.${mode}-mode`);
+            if (targetContainer) {
+                targetContainer.classList.add('active');
+            }
+
+            // 特别处理历史记录的占位符
+            if (mode === 'history') {
+                // 检查当前激活的顶层模式
+                const isChatMode = chatModeBtn.classList.contains('active');
+                const isTranslationMode = document.querySelector('.translation-container')?.classList.contains('active');
+                const isVisionMode = visionContainer?.classList.contains('active');
+                
+                // 只有在聊天模式下才显示历史记录，其他模式显示占位符
+                if (!isChatMode) {
+                     historyContent.innerHTML = '<p class="empty-history">当前模式暂不支持历史记录功能。</p>';
+                } else {
+                    historyManager.renderHistoryList();
+                }
+            }
+
+            // 处理系统日志或历史记录显示时隐藏其他模式的主功能区
+            if (mode === 'log' || mode === 'history') {
+                // 检查当前激活的顶层模式
+                const isTranslationMode = document.querySelector('.translation-container')?.classList.contains('active');
+                const isVisionMode = visionContainer?.classList.contains('active');
+                
+                // 在翻译或视觉模式下显示系统日志或历史记录时，隐藏对应的主功能区
+                if (isTranslationMode) {
+                    document.querySelector('.translation-container').style.display = 'none';
+                }
+                if (isVisionMode) {
+                    visionContainer.style.display = 'none';
+                }
+            } else {
+                // 切换到其他模式时，确保显示主功能区
+                const translationContainer = document.querySelector('.translation-container');
+                if (translationContainer) {
+                    translationContainer.style.display = '';
+                }
+                if (visionContainer) {
+                    visionContainer.style.display = '';
+                }
+            }
 
             // 确保在切换模式时停止所有媒体流
-            if (videoManager) {
-                stopVideo();
+            if (videoHandler && videoHandler.getIsVideoActive()) { // T3: 使用 videoHandler 停止视频
+                videoHandler.stopVideo();
             }
-            if (screenRecorder) {
-                stopScreenSharing();
+            if (screenHandler && screenHandler.getIsScreenActive()) { // T4: 使用 screenHandler 停止屏幕共享
+                screenHandler.stopScreenSharing();
             }
             // 媒体预览容器的显示由 isVideoActive 或 isScreenSharing 状态控制
             updateMediaPreviewsDisplay();
@@ -227,7 +346,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     clearLogsBtn.addEventListener('click', () => {
         logsContainer.innerHTML = ''; // 清空日志内容
-        logMessage('日志已清空', 'system');
+        chatUI.logMessage('日志已清空', 'system');
     });
 
     // 4. 配置面板切换逻辑 (现在通过顶部导航的齿轮图标控制)
@@ -251,19 +370,544 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
    // 附件按钮事件监听 (只绑定一次)
-   attachmentButton.addEventListener('click', () => fileInput.click());
-   fileInput.addEventListener('change', handleFileAttachment);
+   // T2: 初始化附件管理器
+   attachmentManager = new AttachmentManager({ // T2: 初始化全局变量
+       chatPreviewsContainer: fileAttachmentPreviews,
+       visionPreviewsContainer: visionAttachmentPreviews,
+       showToast: showToast,
+       showSystemMessage: showSystemMessage
+   });
 
-   // 视觉模型附件按钮事件监听
-   visionAttachmentButton.addEventListener('click', () => visionFileInput.click());
-   visionFileInput.addEventListener('change', (event) => handleFileAttachment(event, 'vision'));
-   visionSendButton.addEventListener('click', handleSendVisionMessage);
+   // 附件按钮事件监听 (只绑定一次)
+   attachmentButton.addEventListener('click', () => fileInput.click());
+   fileInput.multiple = true; // 允许选择多个文件
+   fileInput.addEventListener('change', (event) => attachmentManager.handleFileAttachment(event, 'chat', currentSessionId));
  
-   // 初始化翻译功能
-   initTranslation();
+   // T10: 初始化 HistoryManager
+   historyManager = new HistoryManager({
+       elements: {
+           historyContent: historyContent,
+       },
+       updateChatUI: (sessionData) => {
+           messageHistory.innerHTML = '';
+           sessionData.messages.forEach(message => {
+               if (message.role === 'user') {
+                   const textPart = message.content.find(p => p.type === 'text')?.text || '';
+                   const filesToDisplay = [];
+
+                   message.content.forEach(part => {
+                       if (part.type === 'image_url') {
+                           const imageUrl = part.image_url.url;
+                           const mimeMatch = imageUrl.match(/^data:(.*?);base64,/);
+                           const fileType = mimeMatch ? mimeMatch[1] : 'application/octet-stream';
+                           filesToDisplay.push({ base64: imageUrl, name: 'Loaded Image', type: fileType });
+                       } else if (part.type === 'audio_url') {
+                           const audioUrl = part.audio_url.url;
+                           const mimeMatch = audioUrl.match(/^data:(.*?);base64,/);
+                           const fileType = mimeMatch ? mimeMatch[1] : 'application/octet-stream';
+                           filesToDisplay.push({ base64: audioUrl, name: 'Loaded Audio', type: fileType });
+                       } else if (part.type === 'pdf_url') {
+                           const pdfUrl = part.pdf_url.url;
+                           const mimeMatch = pdfUrl.match(/^data:(.*?);base64,/);
+                           const fileType = mimeMatch ? mimeMatch[1] : 'application/octet-stream';
+                           filesToDisplay.push({ base64: pdfUrl, name: 'Loaded PDF', type: fileType });
+                       }
+                   });
+                   chatUI.displayUserMessage(textPart, filesToDisplay);
+               } else if (message.role === 'assistant') {
+                   const aiMessage = chatUI.createAIMessageElement();
+                   
+                   // 渲染主要内容
+                   aiMessage.rawMarkdownBuffer = message.content || '';
+                   aiMessage.markdownContainer.innerHTML = marked.parse(aiMessage.rawMarkdownBuffer);
+
+                   // 检查并渲染思维链
+                   if (message.reasoning && message.reasoning.trim() !== '') {
+                       aiMessage.rawReasoningBuffer = message.reasoning;
+                       const reasoningContent = aiMessage.reasoningContainer.querySelector('.reasoning-content');
+                       reasoningContent.innerHTML = message.reasoning.replace(/\n/g, '<br>');
+                       aiMessage.reasoningContainer.style.display = 'block';
+                       
+                       // 在思维链和答案之间添加分隔线
+                       const separator = document.createElement('hr');
+                       separator.className = 'answer-separator';
+                       aiMessage.markdownContainer.before(separator);
+                   }
+
+                   // 对两个容器都应用数学公式排版
+                   if (typeof MathJax !== 'undefined' && MathJax.startup) {
+                       MathJax.startup.promise.then(() => {
+                           MathJax.typeset([aiMessage.markdownContainer, aiMessage.reasoningContainer]);
+                       }).catch((err) => console.error('MathJax typesetting failed:', err));
+                   }
+               }
+           });
+       },
+       getChatHistory: () => chatHistory,
+       setChatHistory: (newHistory) => { chatHistory = newHistory; },
+       getCurrentSessionId: () => currentSessionId,
+       setCurrentSessionId: (newId) => { currentSessionId = newId; },
+       showToast: showToast,
+       showSystemMessage: showSystemMessage,
+       logMessage: chatUI.logMessage,
+   });
+   historyManager.init(); // 初始化并渲染历史列表
+
+   // T4: 初始化 ScreenHandler
+   screenHandler = new ScreenHandler({
+       elements: {
+           screenButton: screenButton,
+           stopScreenButton: stopScreenButton,
+           fpsInput: fpsInput,
+           mediaPreviewsContainer: mediaPreviewsContainer,
+           screenContainer: screenContainer,
+           screenPreview: screenPreview,
+       },
+       isConnected: () => isConnected, // 传递 isConnected 状态
+       client: client, // 传递 WebSocket 客户端实例
+       updateMediaPreviewsDisplay: updateMediaPreviewsDisplay, // 传递更新函数
+       logMessage: chatUI.logMessage, // 传递日志函数
+       getSelectedModelConfig: () => selectedModelConfig, // 传递获取模型配置的函数
+   });
+
+   // T3: 初始化 VideoHandler
+   videoHandler = new VideoHandler({
+       elements: {
+           cameraButton: cameraButton,
+           stopVideoButton: stopVideoButton,
+           flipCameraButton: flipCameraButton, // 确保传递翻转按钮
+           fpsInput: fpsInput,
+           mediaPreviewsContainer: mediaPreviewsContainer,
+           videoPreviewContainer: videoPreviewContainer,
+           videoPreviewElement: videoPreviewElement,
+       },
+       isConnected: () => isConnected, // 传递 isConnected 状态
+       client: client, // 传递 WebSocket 客户端实例
+       updateMediaPreviewsDisplay: updateMediaPreviewsDisplay, // 传递更新函数
+       logMessage: chatUI.logMessage, // 传递日志函数
+       getSelectedModelConfig: () => selectedModelConfig, // 传递获取模型配置的函数
+   });
+
+    // 初始化翻译功能
+    const translationElements = {
+        translationModeBtn: document.getElementById('translation-mode-button'),
+        chatModeBtn: document.getElementById('chat-mode-button'),
+        visionModeBtn: document.getElementById('vision-mode-button'),
+        toggleLogBtn: document.getElementById('toggle-log'),
+        translationContainer: document.querySelector('.translation-container'),
+        chatContainer: document.querySelector('.chat-container.text-mode'),
+        visionContainer: document.querySelector('.vision-container'),
+        logContainer: document.querySelector('.chat-container.log-mode'),
+        inputArea: document.querySelector('.input-area'),
+        mediaPreviewsContainer: document.getElementById('media-previews'),
+        inputLangSelect: document.getElementById('translation-input-language-select'),
+        outputLangSelect: document.getElementById('translation-output-language-select'),
+        translationModelSelect: document.getElementById('translation-model-select'),
+        translateButton: document.getElementById('translate-button'),
+        translationOcrButton: document.getElementById('translation-ocr-button'),
+        translationOcrInput: document.getElementById('translation-ocr-input'),
+        copyButton: document.getElementById('translation-copy-button'),
+        outputText: document.getElementById('translation-output-text'),
+        translationVoiceInputButton: document.getElementById('translation-voice-input-button'),
+        translationInputTextarea: document.getElementById('translation-input-text'),
+    };
+    const mediaHandlers = {
+        videoHandler,
+        screenHandler,
+        updateMediaPreviewsDisplay
+    };
+    initializeTranslationCore(translationElements, mediaHandlers, showToast);
+    // 建立象棋模块和视觉模块的通信桥梁
+    window.displayVisionMessage = (message) => {
+        // 调用 vision-core 中的显示函数
+        if (typeof displayVisionMessage === 'function') {
+            displayVisionMessage(message);
+        }
+    };
+    
+    // 初始化指令模式选择
+    initializePromptSelect(promptSelect, systemInstructionInput);
+
+   // T11: 初始化聊天UI模块并注入依赖
+   const transcribeAudioHandler = async (audioBlob, buttonElement) => {
+       buttonElement.disabled = true;
+       buttonElement.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>';
+       try {
+           const response = await fetch('/api/transcribe-audio', {
+               method: 'POST',
+               headers: { 'Content-Type': audioBlob.type },
+               body: audioBlob,
+           });
+           if (!response.ok) {
+               const errorData = await response.json();
+               throw new Error(`转文字失败: ${errorData.error || response.statusText}`);
+           }
+           const result = await response.json();
+           const transcriptionText = result.text || '未获取到转录文本。';
+           const { markdownContainer } = chatUI.createAIMessageElement();
+           markdownContainer.innerHTML = marked.parse(transcriptionText);
+           if (typeof MathJax !== 'undefined' && MathJax.startup) {
+               MathJax.startup.promise.then(() => {
+                   MathJax.typeset([markdownContainer]);
+               }).catch((err) => console.error('MathJax typesetting failed:', err));
+           }
+           chatUI.scrollToBottom();
+           chatUI.logMessage('语音转文字成功', 'system');
+       } catch (error) {
+           chatUI.logMessage(`语音转文字失败: ${error.message}`, 'system');
+           console.error('语音转文字失败:', error);
+       } finally {
+           buttonElement.disabled = false;
+           buttonElement.innerHTML = '<i class="fa-solid fa-file-alt"></i>';
+       }
+   };
+
+   chatUI.initChatUI(
+       { // 注入 DOM 元素
+           messageHistory: document.getElementById('message-history'),
+           logsContainer: document.getElementById('logs-container')
+       },
+       { // 注入处理器
+           transcribeAudioHandler,
+           formatTime,
+           isUserScrolling: () => isUserScrolling
+       },
+       { // 注入库
+           marked: window.marked,
+           MathJax: window.MathJax
+       }
+   );
+   // 初始化 ChatApiHandler
+   chatApiHandler = new ChatApiHandler({
+       toolManager: toolManager,
+       historyManager: historyManager,
+       state: {
+           get chatHistory() { return chatHistory; },
+           set chatHistory(value) { chatHistory = value; },
+           get currentSessionId() { return currentSessionId; },
+           set currentSessionId(value) { currentSessionId = value; },
+           get currentAIMessageContentDiv() { return currentAIMessageContentDiv; },
+           set currentAIMessageContentDiv(value) { currentAIMessageContentDiv = value; },
+           get isUsingTool() { return isUsingTool; },
+           set isUsingTool(value) { isUsingTool = value; }
+       },
+       libs: {
+           marked: window.marked,
+           MathJax: window.MathJax
+       },
+       config: CONFIG // 注入完整的配置对象
+   });
+   
+   // 视觉模型相关 DOM 元素 - 更新为新的结构
+   const visionElements = {
+       visionModelSelect: document.getElementById('vision-model-select'),
+       visionPromptSelect: document.getElementById('vision-prompt-select'),
+       visionSendButton: document.getElementById('vision-send-button'),
+       visionSummaryButton: document.getElementById('vision-summary-button'),
+       visionAttachmentButton: document.getElementById('vision-attachment-button'),
+       visionFileInput: document.getElementById('vision-file-input'),
+       visionInputText: document.getElementById('vision-input-text'),
+       visionMessageHistory: document.getElementById('vision-message-history'),
+       // 新增：切换按钮
+       toggleToChessButton: document.getElementById('toggle-to-chess-button'),
+       toggleToVisionButton: document.getElementById('toggle-to-vision-button')
+   };
+
+   // 创建 Vision 历史管理器
+   const visionHistoryManager = createVisionHistoryManager();
+
+   // 初始化 Vision 模式的 ChatApiHandler
+   visionApiHandler = new ChatApiHandler({
+       toolManager: toolManager,
+       historyManager: visionHistoryManager,
+       state: {
+           chatHistory: visionHistoryManager.getCurrentSessionMessages(), // 从历史管理器获取消息
+           currentSessionId: visionHistoryManager.getCurrentSessionId(),
+           currentAIMessageContentDiv: null,
+           isUsingTool: false
+       },
+       libs: {
+           marked: window.marked,
+           MathJax: window.MathJax
+       },
+       config: CONFIG,
+       // [新增] 确保传递正确的元素引用
+       elements: {
+           messageHistory: visionElements.visionMessageHistory,
+           logsContainer: document.getElementById('logs-container')
+       }
+   });
+
+   // 定义 visionHandlers - 确保包含历史管理器
+   const visionHandlers = {
+       showToast: showToast,
+       showSystemMessage: showSystemMessage,
+       chatApiHandler: visionApiHandler,
+       historyManager: visionHistoryManager // 添加历史管理器到 handlers
+   };
+
    // 初始化视觉功能
-   initVision();
- });
+   initializeVisionCore(visionElements, attachmentManager, visionHandlers);
+   
+   // 初始化国际象棋 - 确保在所有DOM元素就绪后调用
+   setTimeout(() => {
+       initializeChessCore({
+           showToast: showToast,
+           displayVisionMessage: displayVisionMessage, // 注入渲染函数
+           chatApiHandler: visionApiHandler // 修改为使用 visionApiHandler
+       });
+       
+       // 手动添加切换按钮事件监听器作为备份
+       const toggleToChessBtn = document.getElementById('toggle-to-chess-button');
+       const toggleToVisionBtn = document.getElementById('toggle-to-vision-button');
+       
+       if (toggleToChessBtn) {
+           toggleToChessBtn.addEventListener('click', () => {
+               const chessFullscreen = document.getElementById('chess-fullscreen');
+               const visionChatFullscreen = document.getElementById('vision-chat-fullscreen');
+               if (chessFullscreen && visionChatFullscreen) {
+                   visionChatFullscreen.classList.remove('active');
+                   chessFullscreen.classList.add('active');
+                   console.log('Switched to chess view');
+               }
+           });
+       }
+       
+       if (toggleToVisionBtn) {
+           toggleToVisionBtn.addEventListener('click', () => {
+               const chessFullscreen = document.getElementById('chess-fullscreen');
+               const visionChatFullscreen = document.getElementById('vision-chat-fullscreen');
+               if (chessFullscreen && visionChatFullscreen) {
+                   chessFullscreen.classList.remove('active');
+                   visionChatFullscreen.classList.add('active');
+                   console.log('Switched to vision chat view');
+               }
+           });
+       }
+   }, 500);
+   
+   // 初始化 ImageManager (模态框)
+   initImageManager();
+
+   // 🚀 新增：初始化智能代理系统
+   initializeEnhancedAgent();
+   
+   // 🚀 在DOMContentLoaded中初始化技能系统
+  initializeEnhancedSkillSystem();
+   
+   // 🎯 添加调试状态检查
+   setTimeout(debugAgentSystem, 2000);
+   
+   // 确保工作流样式加载
+   loadWorkflowStyles();
+// 🎯 核心功能最终版：浮窗式、带搜索的 CRUD 文件管理器
+const fileManagerButton = document.getElementById('file-manager-button');
+const fileManagerModal = document.getElementById('file-manager-modal');
+const closeFileManagerButton = document.getElementById('close-file-manager');
+const fileManagerSearchInput = document.getElementById('file-manager-search');
+const fileListContainer = document.getElementById('file-list-container');
+const refreshFileListButton = document.getElementById('refresh-file-list');
+
+const backendHostname = 'https://pythonsandbox.10110531.xyz';
+let isFileManagerAuthenticated = false;
+let allFilesCache = []; // 用于缓存文件列表以支持前端搜索
+
+function openFileManager() {
+    if (isFileManagerAuthenticated) {
+        fileManagerModal.style.display = 'flex';
+        updateFileList(); // 每次打开都刷新
+    } else {
+        const password = prompt("请输入文件管理器访问密码:");
+        if (password) verifyPasswordAndOpen(password);
+    }
+}
+
+function closeFileManager() {
+    fileManagerModal.style.display = 'none';
+}
+
+async function verifyPasswordAndOpen(password) {
+    try {
+        showToast('正在验证...');
+        const response = await fetch('/api/verify-password', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ password: password })
+        });
+        if (response.status === 200) {
+            isFileManagerAuthenticated = true;
+            showToast('验证成功！');
+            fileManagerModal.style.display = 'flex';
+            await updateFileList();
+        } else {
+            showToast('密码错误！');
+        }
+    } catch (error) { showToast('验证时发生网络错误。'); }
+}
+
+async function updateFileList() {
+    if (!isFileManagerAuthenticated) return;
+    try {
+        const response = await fetch(`/api/v1/files/global/list-all`);
+        if (!response.ok) throw new Error(`无法获取文件列表 (状态: ${response.status})`);
+        allFilesCache = await response.json(); // 更新缓存
+        renderFileList(allFilesCache); // 渲染列表
+    } catch (error) {
+        showToast(`获取文件列表失败`, 3000);
+    }
+}
+
+function renderFileList(files) {
+    fileListContainer.innerHTML = '';
+    if (files.length === 0) {
+        fileListContainer.innerHTML = '<div class="fm-list-item">所有工作区内暂无文件。</div>';
+    } else {
+        files.sort((a, b) => a.name.localeCompare(b.name)).forEach(file => {
+            const item = document.createElement('div');
+            item.className = 'fm-list-item';
+            
+            const fileInfo = document.createElement('div');
+            fileInfo.className = 'fm-file-info';
+            
+            const fileName = document.createElement('span');
+            fileName.className = 'fm-file-name';
+            fileName.textContent = file.name;
+            
+            const sessionTag = document.createElement('span');
+            sessionTag.className = 'fm-session-tag';
+            sessionTag.textContent = `所属会话: ${file.session_id.substring(0, 8)}...`;
+            
+            fileInfo.appendChild(fileName);
+            fileInfo.appendChild(sessionTag);
+
+            const actionsDiv = document.createElement('div');
+            actionsDiv.className = 'fm-file-actions';
+
+            // 下载按钮
+            const downloadLink = document.createElement('a');
+            downloadLink.className = 'fm-action-icon download-button';
+            downloadLink.href = `${backendHostname}/api/v1/files/global/download/${encodeURIComponent(file.name)}`;
+            downloadLink.title = `下载`;
+            downloadLink.target = '_blank';
+            downloadLink.innerHTML = '<i class="fa-solid fa-download"></i>';
+            
+            // 重命名按钮
+            const renameButton = document.createElement('button');
+            renameButton.className = 'fm-action-icon rename-button';
+            renameButton.title = `重命名`;
+            renameButton.innerHTML = '<i class="fa-solid fa-pen-to-square"></i>';
+            renameButton.onclick = () => handleRename(file.name);
+
+            // 删除按钮
+            const deleteButton = document.createElement('button');
+            deleteButton.className = 'fm-action-icon delete-button';
+            deleteButton.title = `删除`;
+            deleteButton.innerHTML = '<i class="fa-solid fa-trash-can"></i>';
+            deleteButton.onclick = () => handleDelete(file.name);
+
+            actionsDiv.appendChild(downloadLink);
+            actionsDiv.appendChild(renameButton);
+            actionsDiv.appendChild(deleteButton);
+
+            item.appendChild(fileInfo);
+            item.appendChild(actionsDiv);
+            fileListContainer.appendChild(item);
+        });
+    }
+}
+
+// =========================================================================
+// 🎯 核心修复：添加缺失的 handleRename 和 handleDelete 函数
+// =========================================================================
+
+/**
+ * 处理文件重命名操作
+ * @param {string} oldFilename - 要重命名的当前文件名
+ */
+async function handleRename(oldFilename) {
+    const newFilename = prompt("请输入新的文件名:", oldFilename);
+
+    // 检查用户是否取消或输入了空名称，或者名称没有改变
+    if (!newFilename || newFilename.trim() === '' || newFilename === oldFilename) {
+        return; // 用户取消或未做更改，直接返回
+    }
+
+    try {
+        showToast(`正在重命名 "${oldFilename}"...`);
+        const response = await fetch(`/api/v1/files/global/rename/${encodeURIComponent(oldFilename)}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ new_filename: newFilename.trim() })
+        });
+
+        if (response.ok) {
+            showToast('文件重命名成功！');
+            await updateFileList(); // 刷新文件列表
+        } else {
+            // 处理特定错误，如文件名冲突
+            if (response.status === 409) {
+                 showToast('重命名失败：新文件名已存在。');
+            } else {
+                const errorData = await response.json();
+                showToast(`重命名失败: ${errorData.detail || '未知错误'}`);
+            }
+        }
+    } catch (error) {
+        showToast(`网络错误: ${error.message}`);
+    }
+}
+
+/**
+ * 处理文件删除操作
+ * @param {string} filename - 要删除的文件名
+ */
+async function handleDelete(filename) {
+    // 添加确认步骤，防止误删
+    if (!confirm(`您确定要永久删除文件 "${filename}" 吗？此操作无法撤销。`)) {
+        return; // 用户取消
+    }
+
+    try {
+        showToast(`正在删除 "${filename}"...`);
+        const response = await fetch(`/api/v1/files/global/delete/${encodeURIComponent(filename)}`, {
+            method: 'DELETE'
+        });
+
+        // 204 No Content 是 DELETE 成功的标准响应
+        if (response.ok || response.status === 204) {
+            showToast('文件删除成功！');
+            await updateFileList(); // 刷新文件列表
+        } else {
+            const errorData = await response.json();
+            showToast(`删除失败: ${errorData.detail || '未知错误'}`);
+        }
+    } catch (error) {
+        showToast(`网络错误: ${error.message}`);
+    }
+}
+
+function resetFileManagerAuth() {
+    isFileManagerAuthenticated = false;
+    closeFileManager();
+}
+
+// --- 绑定事件 ---
+fileManagerButton.addEventListener('click', openFileManager);
+closeFileManagerButton.addEventListener('click', closeFileManager);
+refreshFileListButton.addEventListener('click', updateFileList);
+// 新增：搜索框事件
+fileManagerSearchInput.addEventListener('input', (e) => {
+    const searchTerm = e.target.value.toLowerCase();
+    const filteredFiles = allFilesCache.filter(file => file.name.toLowerCase().includes(searchTerm));
+    renderFileList(filteredFiles);
+});
+// 新增：点击遮罩层关闭模态框
+fileManagerModal.addEventListener('click', (e) => {
+    if (e.target === fileManagerModal) {
+        closeFileManager();
+    }
+});
+});
 
 // State variables
 let isRecording = false;
@@ -272,22 +916,13 @@ let audioCtx = null;
 let isConnected = false;
 let audioRecorder = null;
 let micStream = null; // 新增：用于保存麦克风流
-let isVideoActive = false;
-let videoManager = null;
-let isScreenSharing = false;
-let screenRecorder = null;
 let isUsingTool = false;
 let isUserScrolling = false; // 新增：用于判断用户是否正在手动滚动
 let audioDataBuffer = []; // 新增：用于累积AI返回的PCM音频数据
+let currentAIMessageContentDiv = null; // 新增：用于跟踪当前播放的音频元素，确保单例播放
 let currentAudioElement = null; // 新增：用于跟踪当前播放的音频元素，确保单例播放
 let chatHistory = []; // 用于存储聊天历史
 let currentSessionId = null; // 用于存储当前会话ID
-let isTranslationRecording = false; // 新增：翻译模式下是否正在录音
-let hasRequestedTranslationMicPermission = false; // 新增：标记是否已请求过翻译麦克风权限
-let translationAudioRecorder = null; // 新增：翻译模式下的 AudioRecorder 实例
-let translationAudioChunks = []; // 新增：翻译模式下录制的音频数据块
-let recordingTimeout = null; // 新增：用于处理长按录音的定时器
-let initialTouchY = 0; // 新增：用于判断手指上滑取消
 // 新增：聊天模式语音输入相关状态变量
 let isChatRecording = false; // 聊天模式下是否正在录音
 let hasRequestedChatMicPermission = false; // 标记是否已请求过聊天麦克风权限
@@ -295,15 +930,741 @@ let chatAudioRecorder = null; // 聊天模式下的 AudioRecorder 实例
 let chatAudioChunks = []; // 聊天模式下录制的音频数据块
 let chatRecordingTimeout = null; // 聊天模式下用于处理长按录音的定时器
 let chatInitialTouchY = 0; // 聊天模式下用于判断手指上滑取消
-let attachedFile = null; // 新增：用于存储待发送的附件信息
-let visionAttachedFiles = []; // 新增：用于存储视觉模型待发送的多个附件信息
-let visionChatHistory = []; // 新增：用于存储视觉模式的聊天历史
+let attachmentManager = null; // T2: 提升作用域
+let historyManager = null; // T10: 提升作用域
+let videoHandler = null; // T3: 新增 VideoHandler 实例
+let screenHandler = null; // T4: 新增 ScreenHandler 实例
+let chatApiHandler = null; // 新增 ChatApiHandler 实例
+let visionApiHandler = null; // 确保这里声明了 visionApiHandler
 
-// Multimodal Client
-const client = new MultimodalLiveClient();
+// 🚀 新增：智能代理系统实例
+let orchestrator = null;
+let agentThinkingDisplay = null; // 🚀 新增：Agent思考显示实例
 
-// State variables
-let selectedModelConfig = CONFIG.API.AVAILABLE_MODELS.find(m => m.name === CONFIG.API.MODEL_NAME); // 初始选中默认模型
+// 添加实时采样率侦测状态（当服务器未发送采样率元数据时尝试估算）
+let _realtimeDetectBytes = 0;
+let _realtimeDetectStart = 0;
+let _realtimeDetectDone = false;
+
+// 🚀 修改智能代理系统初始化函数
+async function initializeEnhancedAgent() {
+    try {
+        console.log('🚀 准备智能代理系统（开关控制初始化模式）...');
+        
+        // 🎯 提前初始化 AgentThinkingDisplay (保留自原有逻辑)
+        const { AgentThinkingDisplay } = await import('./agent/AgentThinkingDisplay.js');
+        agentThinkingDisplay = new AgentThinkingDisplay();
+        console.log('✅ AgentThinkingDisplay 初始化完成');
+        
+        // 🎯 关键修改：创建占位符Orchestrator，不立即初始化
+        orchestrator = {
+            isEnabled: false,
+            isInitialized: false,
+            _initState: 'created',
+            _initializing: false,
+            
+            // 占位方法
+            handleUserRequest: (userMessage, files = [], context = {}) => {
+                console.log('🔌 Orchestrator 未初始化，使用标准模式');
+                return { enhanced: false, type: 'standard_fallback' };
+            },
+            
+            setEnabled: async function(enabled) {
+                console.log(`🎯 设置智能代理开关: ${enabled}, 当前初始化状态: ${this._initState}`);
+                
+                // 🎯 立即更新开关状态
+                this.isEnabled = enabled;
+                localStorage.setItem('agentModeEnabled', enabled);
+                
+                if (enabled && this._initState === 'created') {
+                    // 🎯 开关打开且未初始化，开始初始化
+                    console.log('🔌 开关触发Orchestrator初始化...');
+                    await this._initializeOrchestrator();
+                } else if (!enabled && this._initState === 'initialized') {
+                    // 🎯 开关关闭且已初始化，清理资源
+                    console.log('🔌 开关关闭，清理Agent资源');
+                    // 🎯 修复：在关闭模式时隐藏仪表盘
+                    if (agentThinkingDisplay) {
+                        agentThinkingDisplay.hide();
+                    }
+                    this._cleanupResources();
+                }
+                
+                // 🎯 简化：直接使用Toast提示状态
+                if (enabled && this._initState === 'initialized') {
+                    showToast('智能代理系统已启用');
+                } else if (!enabled) {
+                    showToast('智能代理系统已禁用');
+                }
+            },
+            
+            // 真正的初始化方法
+            _initializeOrchestrator: async function() {
+                if (this._initState === 'initialized') {
+                    console.log('✅ Orchestrator 已初始化');
+                    return true;
+                }
+                
+                if (this._initializing) {
+                    console.log('🔄 Orchestrator 正在初始化中...');
+                    return new Promise((resolve) => {
+                        const checkInterval = setInterval(() => {
+                            if (this._initState === 'initialized') {
+                                clearInterval(checkInterval);
+                                resolve(true);
+                            }
+                        }, 100);
+                    });
+                }
+                
+                this._initializing = true;
+                console.log('🔄 开始初始化 Orchestrator...');
+                showToast('智能代理系统初始化中...', 3000);
+                
+                try {
+                    // 动态导入 Orchestrator
+                    const { Orchestrator } = await import('./agent/Orchestrator.js');
+                    
+                    // 创建真正的 Orchestrator 实例
+                    const realOrchestrator = new Orchestrator(chatApiHandler, {
+                        enabled: true,
+                        containerId: 'workflow-container',
+                        maxIterations: 10,
+                    });
+                    
+                    // 等待初始化完成
+                    await realOrchestrator.ensureInitialized();
+                    
+                    // 🎯 替换占位符为真实实例
+                    // Object.assign 复制实例属性 (如 this.agentSystem, this.tools)
+                    Object.assign(this, realOrchestrator);
+                    
+                    // 🎯 关键修复：手动复制原型方法，确保外部调用指向真实实例的逻辑
+                    // 占位符的 handleUserRequest 必须被真实实例的同名方法覆盖
+                    this.handleUserRequest = realOrchestrator.handleUserRequest.bind(realOrchestrator);
+                    
+                    this._initState = 'initialized';
+                    this._initializing = false;
+                    
+                    console.log('✅ Orchestrator 初始化完成');
+                    showToast('智能代理系统已就绪', 2000);
+                    
+                    return true;
+                } catch (error) {
+                    console.error('❌ Orchestrator 初始化失败:', error);
+                    this._initializing = false;
+                    this._initState = 'failed';
+                    showToast('智能代理系统初始化失败，使用标准模式', 3000);
+                    this.isEnabled = false;
+                    
+                    // 更新开关状态
+                    if (agentModeToggle) {
+                        agentModeToggle.checked = false;
+                    }
+                    
+                    return false;
+                }
+            },
+            
+            _cleanupResources: function() {
+                // 清理Agent相关资源，但不销毁实例
+                this.currentWorkflow = null;
+                this.currentContext = null;
+                if (this.agentSystem) {
+                    this.agentSystem.executor = null;
+                }
+                console.log('🔌 Agent资源清理完成');
+            },
+            
+            ensureInitialized: function() {
+                if (this._initState === 'initialized') return Promise.resolve(true);
+                if (this.isEnabled) {
+                    return this._initializeOrchestrator();
+                } else {
+                    return Promise.resolve(false);
+                }
+            }
+        };
+        
+        // 挂载到全局
+        window.orchestrator = orchestrator;
+        
+        // 🎯 初始化 Agent 开关状态和事件监听
+        const isAgentEnabled = localStorage.getItem('agentModeEnabled') === 'true';
+        if (agentModeToggle) {
+            agentModeToggle.checked = isAgentEnabled;
+            agentModeToggle.disabled = false;
+            
+            // 🎯 修改开关事件监听器 - 核心逻辑
+            agentModeToggle.addEventListener('change', async (e) => {
+                const enabled = e.target.checked;
+                console.log(`🔘 智能代理开关状态变化: ${enabled}`);
+                
+                // 立即更新开关视觉状态
+                agentModeToggle.checked = enabled;
+                
+                // 调用 Orchestrator 的 setEnabled 方法
+                await orchestrator.setEnabled(enabled);
+                
+                // 如果初始化失败，确保开关状态正确
+                if (enabled && orchestrator._initState === 'failed') {
+                    agentModeToggle.checked = false;
+                }
+            });
+            
+            // 🎯 如果之前是开启状态，触发初始化
+            if (isAgentEnabled) {
+                console.log('🔘 检测到之前开启状态，触发Orchestrator初始化...');
+                setTimeout(async () => {
+                    await orchestrator.setEnabled(true);
+                }, 1000);
+            }
+        }
+        
+        console.log('✅ 智能代理系统准备完成（开关控制初始化模式）');
+
+        // 🎯 临时调试：强行触发一次已知会发出的事件，检查是否能被接收
+        // 延迟执行，确保 Orchestrator 有足够时间完成初始化（如果 isAgentEnabled 为 true）
+        setTimeout(async () => {
+            if (orchestrator && orchestrator.callbackManager && orchestrator.isEnabled) {
+                try {
+                    console.log('[Main.js Debug] 尝试手动触发一个研究开始事件...');
+                    // 使用 Orchestrator.js 中 setupHandlers 映射的事件名称 on_research_start
+                    await orchestrator.callbackManager.invokeEvent('on_research_start', {
+                        run_id: 'debug_run_id',
+                        data: {
+                            topic: '测试主题',
+                            availableTools: ['tool1'],
+                            researchMode: 'standard',
+                            researchData: { keywords: ['test'], sources: [], toolCalls: [], metrics: {} }
+                        },
+                        agentType: 'deep_research' // 模拟 Agent 传递的类型
+                    });
+                    console.log('[Main.js Debug] 手动触发事件成功。');
+                } catch (eventError) {
+                    console.error('[Main.js Debug] 手动触发事件失败:', eventError);
+                }
+            } else {
+                console.log('[Main.js Debug] Orchestrator 未启用或未初始化，跳过手动触发事件。');
+            }
+        }, 2000); // 给予 2 秒时间确保异步初始化完成
+        
+    } catch (error) {
+        console.error('智能代理系统准备失败:', error);
+        ensureBasicAgentFunctionality();
+    }
+}
+
+// 🛡️ 确保基础功能可用的降级方案
+function ensureBasicAgentFunctionality() {
+    console.log('🛡️ 启用智能代理系统降级模式');
+    
+    window.orchestrator = {
+        isEnabled: false,
+        isInitialized: false,
+        handleUserRequest: () => ({ enhanced: false, type: 'standard_fallback' }),
+        setEnabled: (enabled) => {
+            console.log('🛡️ 降级模式: setEnabled called', enabled);
+            if (enabled) {
+                showToast('智能代理系统暂时不可用，请刷新页面重试');
+            }
+        }
+    };
+    
+    if (agentModeToggle) {
+        agentModeToggle.checked = false;
+        agentModeToggle.disabled = true;
+    }
+}
+
+/**
+ * 🚀 加载工作流样式
+ */
+function loadWorkflowStyles() {
+  if (!document.querySelector('link[href*="workflow-ui.css"]')) {
+    const link = document.createElement('link');
+    link.rel = 'stylesheet';
+    link.href = 'css/workflow-ui.css';
+    document.head.appendChild(link);
+    
+    // 添加加载错误处理
+    link.onerror = () => {
+      console.warn('工作流样式加载失败，使用备用样式');
+      injectFallbackStyles();
+    };
+  }
+}
+
+/**
+ * 🚀 备用样式注入
+ */
+function injectFallbackStyles() {
+  const style = document.createElement('style');
+  style.textContent = `
+    .workflow-container { 
+      display: none; 
+      margin: 20px 0; 
+      padding: 16px; 
+      background: #f8f9fa; 
+      border-radius: 8px; 
+      border: 1px solid #ddd; 
+    }
+    .workflow-step { 
+      margin: 8px 0; 
+      padding: 12px; 
+      background: white; 
+      border-radius: 6px; 
+    }
+    .workflow-step-running { background: #f0f8ff; }
+    .workflow-step-success { background: #f0fff0; }
+    .workflow-step-failed { background: #fff0f0; }
+  `;
+  document.head.appendChild(style);
+}
+
+
+/**
+ * 辅助函数：获取当前模型可用的工具名称列表
+ * [已修复] 将 modelConfig.tools 作为数组使用，而不是函数
+ */
+function getAvailableToolNames(currentModel) {
+    const modelConfig = CONFIG.API.AVAILABLE_MODELS.find(m => m.name === currentModel);
+    // 如果模型配置或工具列表不存在，返回空数组
+    if (!modelConfig || !modelConfig.tools) {
+        return [];
+    }
+    
+    try {
+        // --- 关键修复 ---
+        // modelConfig.tools 是工具定义的数组，而不是一个函数。
+        // 我们直接使用这个数组。
+        const toolDefinitions = modelConfig.tools;
+
+        // 确保它是一个数组，以防配置错误
+        if (!Array.isArray(toolDefinitions)) {
+            console.error(`[Agent System] Error: modelConfig.tools for model '${currentModel}' is not an array.`);
+            return [];
+        }
+
+        // 从每个工具定义中提取函数名称
+        // 使用可选链 (?.) 增加代码健壮性
+        return toolDefinitions
+            .map(tool => tool.function?.name)
+            .filter(Boolean); // 过滤掉任何可能为空的名称
+        // --- 修复结束 ---
+
+    } catch (error) {
+        // 保留 try...catch 块以处理任何意外错误
+        console.error('获取可用工具失败:', error);
+        return [];
+    }
+}
+
+/**
+ * ✨ [修复] 标准聊天请求处理函数
+ * @description 根据模型配置决定是否添加工具定义
+ */
+async function handleStandardChatRequest(message, attachedFiles, modelName, apiKey, pushToHistory = true) {
+    const userContent = [];
+    if (message) {
+        userContent.push({ type: 'text', text: message });
+    }
+
+    attachedFiles.forEach(file => {
+        if (file.type.startsWith('image/')) {
+            userContent.push({ type: 'image_url', image_url: { url: file.base64 } });
+        } else if (file.type === 'application/pdf') {
+            userContent.push({ type: 'pdf_url', pdf_url: { url: file.base64 } });
+        } else if (file.type.startsWith('audio/')) {
+            userContent.push({ type: 'audio_url', audio_url: { url: file.base64 } });
+        }
+    });
+
+    if (pushToHistory) {
+        chatHistory.push({ role: 'user', content: userContent });
+    }
+
+    // 🎯 修复：只在模型配置明确要求时才添加工具定义
+    const modelConfig = CONFIG.API.AVAILABLE_MODELS.find(m => m.name === modelName);
+    
+    const requestBody = {
+        model: modelName,
+        messages: chatHistory,
+        generationConfig: { responseModalities: ['text'] },
+        stream: true,
+        sessionId: currentSessionId
+    };
+
+    // 🎯 关键修复：只有配置了 tools 字段的模型才添加工具定义
+    if (modelConfig && modelConfig.tools) {
+        const toolType = modelConfig.isGemini ? 'geminiMcpTools' :
+                        modelConfig.isZhipu ? 'mcpTools' : 'customTools';
+        console.log(`🎯 [工具注入] 为模型 ${modelName} 注入工具定义 (${toolType})`);
+        requestBody.tools = modelConfig.tools;
+    } else {
+        console.log(`🔍 [工具跳过] 模型 ${modelName} 未配置工具，使用标准请求`);
+    }
+
+    await chatApiHandler.streamChatCompletion(requestBody, apiKey);
+}
+
+/**
+ * 🚀 [关键修复] 处理用户消息发送的核心函数
+ * @description 严格区分WebSocket和HTTP模式，确保WebSocket模式完全独立
+ */
+async function handleSendMessage(attachmentManager) {
+    const messageText = messageInput.value.trim();
+    const attachedFiles = attachmentManager.getChatAttachedFiles();
+    if (!messageText && attachedFiles.length === 0) return;
+
+    // 如果是 HTTP 模式且尚无 session，先创建会话以避免后续生成新会话时清空刚刚渲染的用户消息
+    if (!selectedModelConfig.isWebSocket && !currentSessionId) {
+        historyManager.generateNewSession();
+    }
+
+    // 🚀 关键修复：立即执行所有UI更新和清理操作
+    chatUI.displayUserMessage(messageText, attachedFiles);
+    messageInput.value = '';
+    attachmentManager.clearAttachedFile('chat');
+    window.currentAIMessageContentDiv = null;
+
+    // 🚀 严格分离WebSocket和HTTP模式
+    if (selectedModelConfig.isWebSocket) {
+        // WebSocket模式 - 完全独立，不涉及任何HTTP请求
+        await handleWebSocketMessage(messageText, attachedFiles);
+    } else {
+        // HTTP模式 - 使用增强的逻辑
+        await handleEnhancedHttpMessage(messageText, attachedFiles);
+    }
+}
+
+/**
+ * 🚀 处理WebSocket模式消息发送
+ * @description WebSocket模式完全独立，不涉及任何HTTP请求或代理系统
+ */
+async function handleWebSocketMessage(messageText, attachedFiles) {
+    if (!isConnected) {
+        chatUI.logMessage('未连接到WebSocket，请先点击连接按钮', 'system');
+        return;
+    }
+
+    try {
+        const parts = [];
+        
+        // 添加文本部分
+        if (messageText) {
+            parts.push({ text: messageText });
+        }
+        
+        // 处理附件（WebSocket模式只支持图片）
+        for (const file of attachedFiles) {
+            if (file.type.startsWith('image/')) {
+                // 将base64数据转换为inlineData格式
+                const base64Data = file.base64.split(',')[1]; // 移除data URL前缀
+                parts.push({
+                    inlineData: {
+                        mimeType: file.type,
+                        data: base64Data
+                    }
+                });
+            } else {
+                chatUI.logMessage(`WebSocket模式暂不支持${file.type}类型的附件`, 'system');
+            }
+        }
+        
+        // 发送消息到WebSocket
+        client.send(parts, true);
+        chatUI.logMessage('消息已通过WebSocket发送', 'system');
+        
+    } catch (error) {
+        console.error('WebSocket消息发送失败:', error);
+        chatUI.logMessage(`WebSocket消息发送失败: ${error.message}`, 'system');
+    }
+}
+
+/**
+ * 🚀 初始化增强技能系统
+ */
+async function initializeEnhancedSkillSystem() {
+  try {
+    console.log('🚀 正在初始化增强技能系统...');
+    
+    // 1. 初始化技能上下文管理器
+    const contextReady = await skillContextManager.ensureInitialized();
+    if (!contextReady) {
+      console.warn('❌ 技能上下文管理器初始化失败，使用降级模式');
+      return;
+    }
+
+    // 2. 预加载常用模型的增强定义
+    const defaultModel = CONFIG.API.MODEL_NAME;
+    await enhancedModelToolManager.getEnhancedToolsForModel(defaultModel);
+    
+    console.log('✅ 增强技能系统初始化完成');
+    
+  } catch (error) {
+    console.error('❌ 增强技能系统初始化失败:', error);
+  }
+}
+
+/**
+ * 🚀 修改核心消息处理函数
+ */
+// =========================================================================
+// 🚀 [最终方案 V2 - 替换] 增强的消息处理函数，仅负责启动 Agent
+// =========================================================================
+async function handleEnhancedHttpMessage(messageText, attachedFiles) {
+    if (!currentSessionId) {
+        historyManager.generateNewSession();
+    }
+
+    const apiKey = apiKeyInput.value;
+    const modelName = selectedModelConfig.name;
+    const isAgentModeEnabled = orchestrator && orchestrator.isEnabled;
+    
+    // 如果 Agent 模式未启用，直接回退到标准模式
+    if (!isAgentModeEnabled) {
+        console.log("💬 Agent 模式未启用，使用标准对话");
+        await handleStandardChatRequest(messageText, attachedFiles, modelName, apiKey);
+        return;
+    }
+
+    try {
+        // 🎯 核心修复：在 Agent 流程开始前，将用户消息推入历史记录
+        const userContent = [];
+        if (messageText) {
+            userContent.push({ type: 'text', text: messageText });
+        }
+        attachedFiles.forEach(file => {
+            if (file.type.startsWith('image/')) {
+                userContent.push({ type: 'image_url', image_url: { url: file.base64 } });
+            } else if (file.type === 'application/pdf') {
+                userContent.push({ type: 'pdf_url', pdf_url: { url: file.base64 } });
+            } else if (file.type.startsWith('audio/')) {
+                userContent.push({ type: 'audio_url', audio_url: { url: file.base64 } });
+            }
+        });
+        chatHistory.push({ role: 'user', content: userContent });
+        
+        // 🚀 获取可用工具名称和增强工具定义
+        const availableToolNames = getAvailableToolNames(modelName);
+        const enhancedTools = await enhancedModelToolManager.getEnhancedToolsForModel(modelName);
+        
+        // 🚀 生成技能上下文
+        const contextResult = await skillContextManager.generateRequestContext(
+            messageText,
+            availableToolNames,
+            selectedModelConfig
+        );
+
+        console.log(`🎯 [技能上下文] 级别: ${contextResult.contextLevel}, 复杂工具: ${contextResult.hasComplexTools}`);
+
+        // 2. 准备 Agent 上下文
+        const agentContext = {
+            model: modelName,
+            apiKey: apiKey,
+            messages: chatHistory,
+            apiHandler: chatApiHandler,
+            availableTools: availableToolNames, // 传递原始工具名称列表
+            enhancedTools: enhancedTools, // 传递增强工具定义
+            contextResult: contextResult // 传递技能上下文结果
+        };
+        
+        // 🔥 核心修改：调用 Orchestrator，但不处理其返回值的 content
+        // 我们在这里“发射后不管”，渲染工作将由 'research:end' 事件监听器处理
+        const agentResult = await orchestrator.handleUserRequest(messageText, attachedFiles, agentContext);
+
+        // 🎯 核心修复：如果 Agent 模式成功执行，更新用户消息的历史记录
+        // Orchestrator 返回的 originalUserMessage 包含完整的用户原始指令，用于历史记录持久化
+        if (agentResult && agentResult.enhanced && agentResult.originalUserMessage) {
+            // 找到 chatHistory 中最后一条用户消息（即当前消息）
+            const lastUserMessageIndex = chatHistory.length - 1;
+            if (lastUserMessageIndex >= 0 && chatHistory[lastUserMessageIndex].role === 'user') {
+                // 替换为 Orchestrator 返回的、包含完整上下文的原始消息
+                // 确保 content 结构是正确的数组格式
+                chatHistory[lastUserMessageIndex].content = [{ type: 'text', text: agentResult.originalUserMessage }];
+                console.log('✅ 历史记录中的用户消息已更新为 Orchestrator 返回的原始消息。');
+            }
+        }
+
+        // 如果 Orchestrator 决定不处理 (e.g., 非研究请求)，则回退
+        if (agentResult && !agentResult.enhanced) {
+            console.log("💬 Orchestrator 决定不处理，回退到标准对话");
+            // 🎯 关键修复：回退时，不重复推入历史记录 (pushToHistory = false)
+            await handleStandardChatRequest(messageText, attachedFiles, modelName, apiKey, false);
+        }
+        
+        // ‼️ 重要：这里不再有任何创建 AI 消息或渲染 report 的代码。
+        // 我们相信 'research:end' 事件会最终触发渲染。
+        // 对于 user_guide 等简单情况，Orchestrator 内部会直接触发事件或返回可直接显示的内容，
+        // 我们可以在这里做一个简单的处理。
+        if (agentResult && agentResult.type === 'user_guide') {
+             const aiMessage = chatUI.createAIMessageElement();
+             aiMessage.markdownContainer.innerHTML = marked.parse(agentResult.content);
+             chatUI.scrollToBottom();
+        }
+
+    } catch (error) {
+        console.error("🤖 Agent 模式执行失败:", error);
+        if (window.agentThinkingDisplay) {
+            window.agentThinkingDisplay.hide();
+        }
+        showSystemMessage(`智能代理执行时发生错误: ${error.message}`);
+        
+        // 🎯 关键修复：如果 Agent 失败，将用户消息从历史记录中移除，并回退到标准模式
+        // 移除刚刚推入的 user 消息
+        if (chatHistory.length > 0 && chatHistory[chatHistory.length - 1].role === 'user') {
+            chatHistory.pop();
+        }
+        // 使用标准模式重新发送，让标准模式自己处理历史记录推入
+        await handleStandardChatRequest(messageText, attachedFiles, modelName, apiKey, true);
+    }
+}
+
+/**
+ * 🚀 处理增强的标准 Skill 模式请求 (修正版)
+ */
+async function handleEnhancedStandardRequest(messageText, attachedFiles, modelName, apiKey, enhancedTools, contextResult) {
+    // 1. 构造用户内容
+    const userContent = [];
+    
+    // ✅ 关键修正：直接使用 skillContextManager 生成的增强版Prompt
+    // 它已经包含了技能指南和用户的原始请求
+    userContent.push({ type: 'text', text: contextResult.enhancedPrompt });
+
+    attachedFiles.forEach(file => {
+        if (file.type.startsWith('image/')) {
+            userContent.push({ type: 'image_url', image_url: { url: file.base64 } });
+        } else if (file.type === 'application/pdf') {
+            userContent.push({ type: 'pdf_url', pdf_url: { url: file.base64 } });
+        } else if (file.type.startsWith('audio/')) {
+            userContent.push({ type: 'audio_url', audio_url: { url: file.base64 } });
+        }
+    });
+
+    chatHistory.push({ role: 'user', content: userContent });
+
+    // 2. 构造请求体
+    const requestBody = {
+        model: modelName,
+        messages: chatHistory,
+        generationConfig: { responseModalities: ['text'] },
+        stream: true,
+        sessionId: currentSessionId
+        // ✅ 移除对 systemInstruction 的动态修改
+    };
+
+    // 3. 注入增强工具定义
+    if (enhancedTools && enhancedTools.length > 0) {
+        requestBody.tools = enhancedTools;
+        console.log(`🎯 [增强工具注入] 为模型 ${modelName} 注入 ${enhancedTools.length} 个增强工具定义`);
+    } else {
+        console.log(`🔍 [工具跳过] 模型 ${modelName} 未配置工具，使用标准请求`);
+    }
+
+    // 4. 发送请求
+    await chatApiHandler.streamChatCompletion(requestBody, apiKey);
+}
+
+/**
+ * 🚀 处理增强的智能代理模式
+ */
+async function handleEnhancedAgentMode(messageText, attachedFiles, modelName, apiKey, availableToolNames, enhancedTools, contextResult) {
+    console.log("🤖 Agent Mode ON: 智能路由用户请求 (增强模式)");
+    
+    try {
+        // 1. 检查开关和初始化状态
+        if (!orchestrator.isEnabled) {
+            console.log('🔌 Agent开关未启用，使用标准模式');
+            await handleStandardChatRequest(messageText, attachedFiles, modelName, apiKey);
+            return;
+        }
+        
+        if (orchestrator._initState !== 'initialized') {
+            console.log('🔄 Agent系统未初始化，立即初始化...');
+            showToast('正在初始化智能代理系统...');
+            
+            const initSuccess = await orchestrator.ensureInitialized();
+            if (!initSuccess) {
+                console.log('❌ Agent初始化失败，使用标准模式');
+                await handleStandardChatRequest(messageText, attachedFiles, modelName, apiKey);
+                return;
+            }
+        }
+        
+        // 2. 准备 Agent 上下文
+        const agentContext = {
+            model: modelName,
+            apiKey: apiKey,
+            messages: chatHistory,
+            apiHandler: chatApiHandler,
+            availableTools: availableToolNames, // 传递原始工具名称列表
+            enhancedTools: enhancedTools, // 传递增强工具定义
+            contextResult: contextResult // 传递技能上下文结果
+        };
+        
+        console.log(`[Agent] 可用工具: ${availableToolNames.join(', ')}`);
+        
+        // 3. 使用真正的 Orchestrator 处理请求
+        const agentResult = await orchestrator.handleUserRequest(messageText, attachedFiles, agentContext);
+        
+        console.log('🎯 Orchestrator处理结果:', agentResult);
+        
+        // 4. 处理结果
+        if (agentResult.enhanced) {
+            if (agentResult.type === 'workflow_pending') {
+                showWorkflowUI(agentResult.workflow);
+                console.log("🎯 工作流等待执行");
+                
+                return new Promise((resolve) => {
+                    const handleWorkflowResult = (event) => {
+                        const finalResult = event.detail;
+                        window.removeEventListener('workflow:result', handleWorkflowResult);
+                        
+                        if (finalResult.skipped) {
+                            handleStandardChatRequest(messageText, attachedFiles, modelName, apiKey)
+                                .finally(resolve);
+                        } else {
+                            chatUI.addMessage({ role: 'assistant', content: finalResult.content });
+                            console.log('工作流执行详情:', finalResult);
+                            resolve();
+                        }
+                    };
+                    window.addEventListener('workflow:result', handleWorkflowResult);
+                });
+            } else if (agentResult.type === 'agent_result') {
+                if (agentResult.fallback) {
+                    chatUI.addMessage({ role: 'assistant', content: agentResult.content });
+                } else {
+                    displayAgentSummary(agentResult);
+                    
+                    if (agentResult.report) {
+                        chatUI.addMessage({ role: 'assistant', content: agentResult.report });
+                    }
+                    
+                    console.log(`Agent执行完成，${agentResult.iterations}次迭代，完整报告已显示`);
+                }
+                console.log('Agent执行详情:', agentResult);
+            } else {
+                chatUI.addMessage({ role: 'assistant', content: agentResult.content });
+                console.log('增强结果详情:', agentResult);
+            }
+        } else {
+            console.log("💬 未触发增强模式，使用标准对话");
+            if (window.agentThinkingDisplay && window.agentThinkingDisplay.currentSession) {
+                 window.agentThinkingDisplay.hide();
+            }
+            await handleStandardChatRequest(messageText, attachedFiles, modelName, apiKey);
+        }
+        
+    } catch (error) {
+        console.error("🤖 Agent模式执行失败:", error);
+        if (window.agentThinkingDisplay) {
+            window.agentThinkingDisplay.hide();
+        }
+        await handleStandardChatRequest(messageText, attachedFiles, modelName, apiKey);
+    }
+}
 
 /**
  * 将PCM数据转换为WAV Blob。
@@ -321,6 +1682,12 @@ function pcmToWavBlob(pcmDataBuffers, sampleRate = CONFIG.AUDIO.OUTPUT_SAMPLE_RA
     const view = new DataView(buffer);
 
     // WAV header
+    const writeString = (view, offset, string) => {
+        for (let i = 0; i < string.length; i++) {
+            view.setUint8(offset + i, string.charCodeAt(i));
+        }
+    };
+
     writeString(view, 0, 'RIFF'); // RIFF identifier
     view.setUint32(4, 36 + dataLength, true); // file length
     writeString(view, 8, 'WAVE'); // RIFF type
@@ -347,17 +1714,11 @@ function pcmToWavBlob(pcmDataBuffers, sampleRate = CONFIG.AUDIO.OUTPUT_SAMPLE_RA
     return new Blob([view], { type: 'audio/wav' });
 }
 
-/**
- * 辅助函数：写入字符串到DataView。
- * @param {DataView} view - DataView实例。
- * @param {number} offset - 写入偏移量。
- * @param {string} string - 要写入的字符串。
- */
-function writeString(view, offset, string) {
-    for (let i = 0; i < string.length; i++) {
-        view.setUint8(offset + i, string.charCodeAt(i));
-    }
-}
+// Multimodal Client
+const client = new MultimodalLiveClient();
+
+// State variables
+let selectedModelConfig = CONFIG.API.AVAILABLE_MODELS.find(m => m.name === CONFIG.API.MODEL_NAME); // 初始选中默认模型
 
 /**
  * 格式化秒数为 MM:SS 格式。
@@ -370,243 +1731,7 @@ function formatTime(seconds) {
     return `${minutes.toString().padStart(2, '0')}:${remainingSeconds.toString().padStart(2, '0')}`;
 }
 
-/**
- * Logs a message to the UI.
- * @param {string} message - The message to log.
- * @param {string} [type='system'] - The type of the message (system, user, ai).
- * @param {string} [messageType='text'] - 消息在聊天历史中的类型 ('text' 或 'audio')。
- */
-function logMessage(message, type = 'system', messageType = 'text') {
-    // 原始日志始终写入 logsContainer
-    const rawLogEntry = document.createElement('div');
-    rawLogEntry.classList.add('log-entry', type);
-    rawLogEntry.innerHTML = `
-        <span class="timestamp">${new Date().toLocaleTimeString()}</span>
-        <span class="emoji">${type === 'system' ? '⚙️' : (type === 'user' ? '🫵' : '🤖')}</span>
-        <span>${message}</span>
-    `;
-    logsContainer.appendChild(rawLogEntry);
-    logsContainer.scrollTop = logsContainer.scrollHeight;
-
-}
-
-/**
- * 在聊天历史中显示用户的多模态消息。
- * @param {string} text - 文本消息内容。
- * @param {object|null} file - 附加的文件对象，包含 base64 等信息。
- */
-function displayUserMessage(text, file) {
-    const messageDiv = document.createElement('div');
-    messageDiv.classList.add('message', 'user');
-
-    const avatarDiv = document.createElement('div');
-    avatarDiv.classList.add('avatar');
-    avatarDiv.textContent = '👤';
-
-    const contentDiv = document.createElement('div');
-    contentDiv.classList.add('content');
-
-    // 如果有文本，则添加文本内容
-    if (text) {
-        const textNode = document.createElement('p');
-        // 为了安全，纯文本使用 textContent
-        textNode.textContent = text;
-        contentDiv.appendChild(textNode);
-    }
-
-    // 如果有文件，则添加图片预览
-    if (file && file.base64) {
-        const img = document.createElement('img');
-        img.src = file.base64;
-        img.alt = file.name || 'Attached Image';
-        img.style.maxWidth = '200px';
-        img.style.maxHeight = '200px';
-        img.style.borderRadius = '8px';
-        img.style.marginTop = text ? '10px' : '0';
-        contentDiv.appendChild(img);
-    }
-
-    messageDiv.appendChild(avatarDiv);
-    messageDiv.appendChild(contentDiv);
-    messageHistory.appendChild(messageDiv);
-
-    scrollToBottom();
-}
-
-/**
- * 在聊天历史中显示语音消息。
- * @param {string} audioUrl - 语音文件的URL。
- * @param {number} duration - 语音时长（秒）。
- * @param {string} type - 消息类型 ('user' 或 'ai')。
- */
-function displayAudioMessage(audioUrl, duration, type) {
-    const messageDiv = document.createElement('div');
-    messageDiv.classList.add('message', type);
-
-    const avatarDiv = document.createElement('div');
-    avatarDiv.classList.add('avatar');
-    avatarDiv.textContent = type === 'user' ? '👤' : '🤖';
-
-    const contentDiv = document.createElement('div');
-    contentDiv.classList.add('content', 'audio-content'); // 添加 audio-content 类
-
-    const audioPlayerDiv = document.createElement('div');
-    audioPlayerDiv.classList.add('audio-player');
-
-    const playButton = document.createElement('button');
-    playButton.classList.add('audio-play-button', 'material-icons');
-    playButton.textContent = 'play_arrow'; // 默认播放图标
-
-    const audioWaveform = document.createElement('div');
-    audioWaveform.classList.add('audio-waveform');
-
-    const audioProgressBar = document.createElement('div');
-    audioProgressBar.classList.add('audio-progress-bar');
-    audioWaveform.appendChild(audioProgressBar);
-
-    const audioDurationSpan = document.createElement('span');
-    audioDurationSpan.classList.add('audio-duration');
-    audioDurationSpan.textContent = formatTime(duration);
-
-    const downloadButton = document.createElement('a');
-    downloadButton.classList.add('audio-download-button', 'material-icons');
-    downloadButton.textContent = 'download';
-    downloadButton.download = `gemini_audio_${Date.now()}.wav`;
-    downloadButton.href = audioUrl;
-
-    const transcribeButton = document.createElement('button');
-    transcribeButton.classList.add('audio-transcribe-button', 'material-icons');
-    transcribeButton.textContent = 'text_fields'; // 转文字图标
-
-    transcribeButton.addEventListener('click', async () => {
-        // 禁用按钮防止重复点击
-        transcribeButton.disabled = true;
-        transcribeButton.textContent = 'hourglass_empty'; // 显示加载状态
-
-        try {
-            // 获取原始音频 Blob
-            // 由于 audioUrl 是通过 URL.createObjectURL(audioBlob) 创建的，
-            // 我们需要一种方式来获取原始的 Blob。
-            // 最直接的方式是修改 displayAudioMessage 的调用，让它直接传递 Blob。
-            // 但为了最小化改动，我们假设 audioUrl 对应的 Blob 仍然在内存中，
-            // 或者我们可以重新 fetch 一次（但这不是最佳实践）。
-            // 更好的方法是，在生成 audioUrl 的地方，同时保存 audioBlob。
-            // 考虑到当前结构，我们假设 audioUrl 对应的 Blob 仍然有效，
-            // 或者我们可以在这里重新获取一次，但更推荐的方式是传递原始 Blob。
-
-            // 临时方案：重新 fetch audioUrl 获取 Blob。
-            // 长期方案：修改 displayAudioMessage 的调用，直接传递 audioBlob。
-            const audioBlobResponse = await fetch(audioUrl);
-            if (!audioBlobResponse.ok) {
-                throw new Error(`无法获取音频 Blob: ${audioBlobResponse.statusText}`);
-            }
-            const audioBlob = await audioBlobResponse.blob();
-
-            // 发送转文字请求到 Worker，直接发送 Blob
-            const response = await fetch('/api/transcribe-audio', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': audioBlob.type, // 使用 Blob 的 MIME 类型
-                },
-                body: audioBlob, // 直接发送 Blob
-            });
-
-            if (!response.ok) {
-                const errorData = await response.json();
-                throw new Error(`转文字失败: ${errorData.error || response.statusText}`);
-            }
-
-            const result = await response.json();
-            const transcriptionText = result.text || '未获取到转录文本。';
-
-            const { markdownContainer } = createAIMessageElement();
-            markdownContainer.innerHTML = marked.parse(transcriptionText);
-            // 触发 MathJax 渲染 (如果需要)
-            if (typeof MathJax !== 'undefined' && MathJax.startup) {
-                MathJax.startup.promise.then(() => {
-                    MathJax.typeset([markdownContainer]);
-                }).catch((err) => console.error('MathJax typesetting failed:', err));
-            }
-            scrollToBottom();
-
-            logMessage('语音转文字成功', 'system');
-        } catch (error) {
-            logMessage(`语音转文字失败: ${error.message}`, 'system');
-            console.error('语音转文字失败:', error);
-        } finally {
-            transcribeButton.disabled = false; // 重新启用按钮
-            transcribeButton.textContent = 'text_fields'; // 恢复图标
-        }
-    });
-
-    const audioElement = new Audio(audioUrl);
-    audioElement.preload = 'metadata'; // 预加载元数据以获取时长
-    audioElement.playbackRate = 1.0; // 新增：确保播放速率为1.0
-
-    playButton.addEventListener('click', () => {
-        if (currentAudioElement && currentAudioElement !== audioElement) {
-            // 暂停上一个播放的音频
-            currentAudioElement.pause();
-            const prevPlayButton = currentAudioElement.closest('.audio-player').querySelector('.audio-play-button');
-            if (prevPlayButton) {
-                prevPlayButton.textContent = 'play_arrow';
-            }
-        }
-
-        if (audioElement.paused) {
-            audioElement.play();
-            playButton.textContent = 'pause';
-            currentAudioElement = audioElement;
-        } else {
-            audioElement.pause();
-            playButton.textContent = 'play_arrow';
-            currentAudioElement = null;
-        }
-    });
-
-    audioElement.addEventListener('timeupdate', () => {
-        const progress = (audioElement.currentTime / audioElement.duration) * 100;
-        audioProgressBar.style.width = `${progress}%`;
-        audioDurationSpan.textContent = formatTime(audioElement.currentTime); // 显示当前播放时间
-    });
-
-    audioElement.addEventListener('ended', () => {
-        playButton.textContent = 'play_arrow';
-        audioProgressBar.style.width = '0%';
-        audioDurationSpan.textContent = formatTime(duration); // 播放结束后显示总时长
-        currentAudioElement = null;
-    });
-
-    audioPlayerDiv.appendChild(playButton);
-    audioPlayerDiv.appendChild(audioWaveform);
-    audioPlayerDiv.appendChild(audioDurationSpan);
-    audioPlayerDiv.appendChild(downloadButton); // 添加下载按钮
-    audioPlayerDiv.appendChild(transcribeButton); // 添加转文字按钮
-    contentDiv.appendChild(audioPlayerDiv);
-
-    messageDiv.appendChild(avatarDiv);
-    messageDiv.appendChild(contentDiv);
-    messageHistory.appendChild(messageDiv);
-
-    scrollToBottom();
-}
-
-/**
- * Scrolls the message history to the bottom.
- * @returns {void}
- */
-function scrollToBottom() {
-    const messageHistory = document.getElementById('message-history');
-    if (!messageHistory) return; // 安全检查
-
-    // 使用 requestAnimationFrame 确保在浏览器下一次重绘前执行，提高平滑度
-    requestAnimationFrame(() => {
-        // 检查用户是否正在手动滚动
-        if (typeof isUserScrolling !== 'boolean' || !isUserScrolling) {
-            messageHistory.scrollTop = messageHistory.scrollHeight;
-        }
-    });
-}
+// T11: All UI functions previously here have been successfully moved to src/static/js/chat/chat-ui.js
 
 /**
  * Updates the microphone icon based on the recording state.
@@ -620,33 +1745,10 @@ function updateMicIcon() {
 }
 
 /**
- * Updates the audio visualizer based on the audio volume.
- * @param {number} volume - The audio volume (0.0 to 1.0).
- * @param {boolean} [isInput=false] - Whether the visualizer is for input audio.
- */
-// function updateAudioVisualizer(volume, isInput = false) {
-//     // 移除音频可视化，因为音频模式已删除，且在文字模式下不需要实时显示音频波形
-//     // 如果未来需要，可以考虑在其他地方重新引入
-//     // const visualizer = isInput ? inputAudioVisualizer : audioVisualizer;
-//     // const audioBar = visualizer.querySelector('.audio-bar') || document.createElement('div');
-//
-//     // if (!visualizer.contains(audioBar)) {
-//     //     audioBar.classList.add('audio-bar');
-//     //     visualizer.appendChild(audioBar);
-//     // }
-//
-//     // audioBar.style.width = `${volume * 100}%`;
-//     // if (volume > 0) {
-//     //     audioBar.classList.add('active');
-//     // } else {
-//     //     audioBar.classList.remove('active');
-//     // }
-// }
-
-/**
  * Initializes the audio context and streamer if not already initialized.
  * @returns {Promise<AudioStreamer>} The audio streamer instance.
  */
+// 🚀 修复：改进音频流初始化，确保实时播放可用
 async function ensureAudioInitialized() {
     if (!audioCtx) {
         const AudioContext = globalThis.AudioContext || globalThis.webkitAudioContext;
@@ -661,12 +1763,34 @@ async function ensureAudioInitialized() {
             };
             
             document.addEventListener('click', resumeHandler);
-            document.addEventListener('touchstart', resumeHandler);
+            document.removeEventListener('touchstart', resumeHandler);
         }
     }
     
     if (!audioStreamer) {
         audioStreamer = new AudioStreamer(audioCtx);
+        
+        // 🎯 修复：添加音频播放状态监听
+        audioStreamer.onPlaybackStart = () => {
+            console.log('🔊 音频实时播放开始');
+            chatUI.logMessage('音频开始播放', 'system');
+        };
+        
+        audioStreamer.onPlaybackEnd = () => {
+            console.log('🔊 音频实时播放结束');
+            chatUI.logMessage('音频播放结束', 'system');
+        };
+        
+        audioStreamer.onPlaybackError = (error) => {
+            console.error('🔊 音频播放错误:', error);
+            chatUI.logMessage(`音频播放错误: ${error.message}`, 'system');
+        };
+        
+        // 🎯 修复：添加音频播放进度监听
+        audioStreamer.onPlaybackProgress = (progress) => {
+            // 可以在这里添加音频播放进度显示
+            console.log('🔊 音频播放进度:', progress);
+        };
     }
     
     return audioStreamer;
@@ -682,7 +1806,7 @@ async function handleMicToggle() {
             // 增加权限状态检查
             const permissionStatus = await navigator.permissions.query({ name: 'microphone' });
             if (permissionStatus.state === 'denied') {
-                logMessage('麦克风权限被拒绝，请在浏览器设置中启用', 'system');
+                chatUI.logMessage('麦克风权限被拒绝，请在浏览器设置中启用', 'system');
                 return;
             }
             await ensureAudioInitialized();
@@ -705,11 +1829,6 @@ async function handleMicToggle() {
                         data: base64Data
                     }]);
                 }
-                
-                // 移除输入音频可视化
-                // inputAnalyser.getByteFrequencyData(_inputDataArray); // 使用重命名后的变量
-                // const inputVolume = Math.max(..._inputDataArray) / 255;
-                // updateAudioVisualizer(inputVolume, true);
             });
 
             const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -720,11 +1839,11 @@ async function handleMicToggle() {
             await audioStreamer.resume();
             isRecording = true;
             Logger.info('Microphone started');
-            logMessage('Microphone started', 'system');
+            chatUI.logMessage('Microphone started', 'system');
             updateMicIcon();
         } catch (error) {
             Logger.error('Microphone error:', error);
-            logMessage(`Error: ${error.message}`, 'system');
+            chatUI.logMessage(`Error: ${error.message}`, 'system');
             isRecording = false;
             updateMicIcon();
         }
@@ -740,11 +1859,11 @@ async function handleMicToggle() {
                 }
             }
             isRecording = false;
-            logMessage('Microphone stopped', 'system');
+            chatUI.logMessage('Microphone stopped', 'system');
             updateMicIcon();
         } catch (error) {
             Logger.error('Microphone stop error:', error);
-            logMessage(`Error stopping microphone: ${error.message}`, 'system');
+            chatUI.logMessage(`Error stopping microphone: ${error.message}`, 'system');
             isRecording = false; // 即使出错也要尝试重置状态
             updateMicIcon();
         }
@@ -765,9 +1884,10 @@ async function resumeAudioContext() {
  * Connects to the WebSocket server.
  * @returns {Promise<void>}
  */
+// 🚀 修复：在连接成功时初始化音频系统
 async function connectToWebsocket() {
     if (!apiKeyInput.value) {
-        logMessage('Please input API Key', 'system');
+        chatUI.logMessage('Please input API Key', 'system');
         return;
     }
 
@@ -776,46 +1896,28 @@ async function connectToWebsocket() {
     localStorage.setItem('gemini_voice', voiceSelect.value);
     localStorage.setItem('system_instruction', systemInstructionInput.value);
 
-        /**
-         * @description 根据用户选择的响应类型构建模型生成配置。
-         * @param {string} selectedResponseType - 用户选择的响应类型 ('text' 或 'audio')。
-         * @returns {string[]} 响应模态数组。
-         */
-        /**
-         * @description 根据用户选择的响应类型构建模型生成配置。
-         * @param {string} selectedResponseType - 用户选择的响应类型 ('text' 或 'audio')。
-         * @returns {string[]} 响应模态数组。
-         */
-        function getResponseModalities(selectedResponseType) {
-            if (selectedResponseType === 'audio') {
-                return ['audio'];
-            } else {
-                return ['text'];
+    const config = {
+        model: CONFIG.API.MODEL_NAME,
+        generationConfig: {
+            responseModalities: responseTypeSelect.value === 'audio' ? ['audio'] : ['text'],
+            speechConfig: {
+                voiceConfig: {
+                    prebuiltVoiceConfig: {
+                        voiceName: voiceSelect.value
+                    }
+                },
             }
+        },
+        systemInstruction: {
+            parts: [{ text: systemInstructionInput.value }],
         }
-
-        const config = {
-            model: CONFIG.API.MODEL_NAME,
-            generationConfig: {
-                responseModalities: getResponseModalities(responseTypeSelect.value),
-                speechConfig: {
-                    voiceConfig: {
-                        prebuiltVoiceConfig: {
-                            voiceName: voiceSelect.value
-                        }
-                    },
-                }
-            },
-
-            systemInstruction: {
-                parts: [{
-                    text: systemInstructionInput.value     // You can change system instruction in the config.js file
-                }],
-            }
-        };  
+    };
 
     try {
-        await client.connect(config,apiKeyInput.value);
+        // 🎯 修复：在连接前确保音频系统初始化
+        await ensureAudioInitialized();
+        
+        await client.connect(config, apiKeyInput.value);
         isConnected = true;
         await resumeAudioContext();
         connectButton.textContent = '断开连接';
@@ -826,12 +1928,17 @@ async function connectToWebsocket() {
         micButton.disabled = false;
         cameraButton.disabled = false;
         screenButton.disabled = false;
-        logMessage('已连接到 Gemini 2.0 Flash 多模态实时 API', 'system');
+        chatUI.logMessage('已连接到 Gemini 2.0 Flash 多模态实时 API', 'system');
         updateConnectionStatus();
+        
+        // 🎯 修复：连接成功后测试音频系统
+        console.log('🔊 WebSocket连接成功，音频系统已准备就绪');
+        debugAudioState();
+        
     } catch (error) {
         const errorMessage = error.message || '未知错误';
         Logger.error('连接错误:', error);
-        logMessage(`连接错误: ${errorMessage}`, 'system');
+        chatUI.logMessage(`连接错误: ${errorMessage}`, 'system');
         isConnected = false;
         connectButton.textContent = '连接';
         connectButton.classList.remove('connected');
@@ -842,12 +1949,12 @@ async function connectToWebsocket() {
         screenButton.disabled = true;
         updateConnectionStatus();
         
-        if (videoManager) {
-            stopVideo();
+        if (videoHandler && videoHandler.getIsVideoActive()) {
+            videoHandler.stopVideo();
         }
         
-        if (screenRecorder) {
-            stopScreenSharing();
+        if (screenHandler && screenHandler.getIsScreenActive()) {
+            screenHandler.stopScreenSharing();
         }
     }
 }
@@ -874,204 +1981,79 @@ function disconnectFromWebsocket() {
     if (micButton) micButton.disabled = true;
     if (cameraButton) cameraButton.disabled = true;
     if (screenButton) screenButton.disabled = true;
-    logMessage('已从服务器断开连接', 'system');
+    chatUI.logMessage('已从服务器断开连接', 'system');
     updateConnectionStatus();
     
-    if (videoManager) {
-        stopVideo();
+    if (videoHandler && videoHandler.getIsVideoActive()) { // T3: 使用 videoHandler 停止视频
+        videoHandler.stopVideo();
     }
     
-    if (screenRecorder) {
-        stopScreenSharing();
+    if (screenHandler && screenHandler.getIsScreenActive()) { // T4: 使用 screenHandler 停止屏幕共享
+        screenHandler.stopScreenSharing();
     }
 }
 
-/**
- * Handles sending a text message.
- */
-async function handleSendMessage() {
-    const message = messageInput.value.trim();
-    // 如果没有文本消息，但有附件，也允许发送
-    if (!message && !attachedFile) return;
+// 🚀 修复：WebSocket音频处理 - 监听audio事件并进行实时播放
+client.on('audio', (payload) => {
+    // payload may be either an ArrayBuffer (legacy) or an object { data: ArrayBuffer, sampleRate: number }
+    let buffer = null;
+    let detectedSampleRate = null;
 
-    // 使用新的函数显示用户消息
-    displayUserMessage(message, attachedFile);
-    messageInput.value = ''; // 清空输入框
-
-    // 在发送用户消息后，重置 currentAIMessageContentDiv，确保下一个AI响应会创建新气泡
-    currentAIMessageContentDiv = null;
-
-    if (selectedModelConfig.isWebSocket) {
-        // WebSocket 模式不支持文件上传，可以提示用户或禁用按钮
-        if (attachedFile) {
-            showSystemMessage('实时模式尚不支持文件上传。');
-            clearAttachedFile(); // 清除附件
-            return;
-        }
-        client.send({ text: message });
+    if (payload && payload.data && payload.data instanceof ArrayBuffer) {
+        buffer = payload.data;
+        detectedSampleRate = payload.sampleRate || null;
+    } else if (payload instanceof ArrayBuffer) {
+        buffer = payload;
     } else {
-        // HTTP 模式下发送消息
+        console.warn('Unknown audio payload format', payload);
+        return;
+    }
+
+    console.log('🚀 接收到实时音频数据:', buffer.byteLength, 'bytes', detectedSampleRate ? `(rate=${detectedSampleRate})` : '');
+
+    // 🎯 实时播放处理
+    if (audioStreamer) {
         try {
-            const apiKey = apiKeyInput.value;
-            const modelName = selectedModelConfig.name;
-            const systemInstruction = systemInstructionInput.value;
+            const int16Array = new Int16Array(buffer);
 
-            if (!currentSessionId) {
-                currentSessionId = generateUniqueSessionId();
-                logMessage(`新会话开始，ID: ${currentSessionId}`, 'system');
-            }
-
-            // 构建消息内容，参考 OCR 项目的成功实践
-            const userContent = [];
-            if (message) {
-                userContent.push({ type: 'text', text: message });
-            }
-            if (attachedFile) {
-                // 参考项目使用 image_url 并传递完整的 Data URL
-                userContent.push({
-                    type: 'image_url',
-                    image_url: {
-                        url: attachedFile.base64
+            // 如果服务器在 mimeType 中提供了采样率，优先使用
+            if (detectedSampleRate && typeof detectedSampleRate === 'number') {
+                audioStreamer.sampleRate = detectedSampleRate;
+            } else if (!_realtimeDetectDone) {
+                // 启动基于到达字节率的估算（仅在没有显式采样率并且尚未完成估算时）
+                const now = (typeof performance !== 'undefined' ? performance.now() : Date.now());
+                if (!_realtimeDetectStart) {
+                    _realtimeDetectStart = now;
+                    _realtimeDetectBytes = 0;
+                }
+                _realtimeDetectBytes += buffer.byteLength;
+                const elapsed = (now - _realtimeDetectStart) / 1000;
+                // 在累计一定时间后进行估算（0.6s），可以调整阈值
+                if (elapsed >= 0.6) {
+                    const bytesPerSec = _realtimeDetectBytes / elapsed;
+                    const estimatedSampleRate = Math.round(bytesPerSec / 2); // 2 bytes per sample for Int16 mono
+                    // 合理范围检查
+                    if (estimatedSampleRate >= 8000 && estimatedSampleRate <= 96000) {
+                        audioStreamer.sampleRate = estimatedSampleRate;
+                        console.log('🔎 估算到服务器采样率:', estimatedSampleRate);
+                    } else {
+                        console.warn('🔎 估算到的采样率不在合理范围，使用默认值', CONFIG.AUDIO.OUTPUT_SAMPLE_RATE);
                     }
-                });
+                    _realtimeDetectDone = true;
+                }
             }
 
-            chatHistory.push({
-                role: 'user',
-                content: userContent // 保持为数组，因为可能包含文本和图片
-            });
-
-            // 清除附件（发送后）
-            clearAttachedFile();
-
-            let requestBody = {
-                model: modelName,
-                messages: chatHistory,
-                generationConfig: {
-                    responseModalities: ['text']
-                },
-                safetySettings: [
-                    { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_NONE' },
-                    { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_NONE' },
-                    { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_NONE' },
-                    { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_NONE' }
-                ],
-                enableGoogleSearch: true,
-                stream: true,
-                sessionId: currentSessionId
-            };
-
-            if (systemInstruction) {
-                requestBody.systemInstruction = {
-                    parts: [{ text: systemInstruction }]
-                };
-            }
-
-            await processHttpStream(requestBody, apiKey);
-
+            audioStreamer.addPCM16(int16Array);
+            console.log('🔊 实时音频数据已发送到AudioStreamer播放');
         } catch (error) {
-            Logger.error('发送 HTTP 消息失败:', error);
-            logMessage(`发送消息失败: ${error.message}`, 'system');
+            console.error('实时音频播放失败:', error);
         }
     }
-}
 
-// Event Listeners
-client.on('open', () => {
-    logMessage('WebSocket connection opened', 'system');
+    // 累积音频数据用于最终显示（保留原始字节）
+    const audioData = new Uint8Array(buffer);
+    audioDataBuffer.push(audioData);
 });
-
-client.on('log', (log) => {
-    logMessage(`${log.type}: ${JSON.stringify(log.message)}`, 'system');
-});
-
-let reconnectAttempts = 0;
-const MAX_RECONNECT = 3;
-
-client.on('close', (event) => {
-    logMessage(`WebSocket connection closed (code ${event.code})`, 'system');
-    if (event.code === 1006 && reconnectAttempts < MAX_RECONNECT) {
-        setTimeout(() => {
-            reconnectAttempts++;
-            connectToWebsocket();
-        }, 2000);
-    }
-});
-
-client.on('audio', async (data) => {
-    try {
-        await resumeAudioContext();
-        const streamer = await ensureAudioInitialized();
-        streamer.addPCM16(new Uint8Array(data));
-        // 同时将音频数据累积到缓冲区
-        audioDataBuffer.push(new Uint8Array(data));
-    } catch (error) {
-        logMessage(`处理音频时出错: ${error.message}`, 'system');
-    }
-});
-
-// 声明一个全局变量来跟踪当前 AI 消息的内容 div
-let currentAIMessageContentDiv = null;
-
-/**
- * 创建并添加一个新的 AI 消息元素到聊天历史。
- * @returns {HTMLElement} 新创建的 AI 消息的内容 div 元素。
- */
-function createAIMessageElement() {
-    const messageDiv = document.createElement('div');
-    messageDiv.classList.add('message', 'ai');
-
-    const avatarDiv = document.createElement('div');
-    avatarDiv.classList.add('avatar');
-    avatarDiv.textContent = '🤖';
-
-    const contentDiv = document.createElement('div');
-    contentDiv.classList.add('content');
-    
-    // 创建Markdown容器
-    const markdownContainer = document.createElement('div');
-    markdownContainer.classList.add('markdown-container');
-    contentDiv.appendChild(markdownContainer);
-    
-    // 复制按钮（保持不变）
-    const copyButton = document.createElement('button');
-    copyButton.classList.add('copy-button', 'material-symbols-outlined');
-    copyButton.textContent = 'content_copy';
-
-    /**
-     * @function
-     * @description 处理复制按钮点击事件，将消息内容复制到剪贴板。
-     * @param {Event} event - 点击事件对象。
-     * @returns {void}
-     */
-    copyButton.addEventListener('click', async () => {
-        const textToCopy = markdownContainer.textContent; // 从 markdownContainer 获取文本
-        try {
-            await navigator.clipboard.writeText(textToCopy);
-            copyButton.textContent = 'check';
-            setTimeout(() => {
-                copyButton.textContent = 'content_copy';
-            }, 2000);
-            logMessage('文本已复制到剪贴板', 'system');
-        } catch (err) {
-            logMessage('复制失败: ' + err, 'system');
-            console.error('复制文本失败:', err);
-        }
-    });
-
-    contentDiv.appendChild(copyButton); // 复制按钮放在内容div内
-    
-    messageDiv.appendChild(avatarDiv);
-    messageDiv.appendChild(contentDiv);
-    messageHistory.appendChild(messageDiv);
-    scrollToBottom();
-    return {
-        container: messageDiv,
-        markdownContainer, // 返回Markdown容器引用
-        contentDiv,
-        rawMarkdownBuffer: '' // 新增：用于累积原始Markdown文本
-    };
-}
 
 client.on('content', (data) => {
     if (data.modelTurn) {
@@ -1087,7 +2069,7 @@ client.on('content', (data) => {
             Logger.info('Tool usage completed');
             // 工具响应后，如果需要，可以立即创建一个新的 AI 消息块来显示后续文本
             if (!currentAIMessageContentDiv) {
-                currentAIMessageContentDiv = createAIMessageElement();
+                currentAIMessageContentDiv = chatUI.createAIMessageElement();
             }
         }
 
@@ -1095,7 +2077,7 @@ client.on('content', (data) => {
         
         if (text) {
             if (!currentAIMessageContentDiv) {
-                currentAIMessageContentDiv = createAIMessageElement();
+                currentAIMessageContentDiv = chatUI.createAIMessageElement();
             }
             
             // 追加文本到原始Markdown缓冲区
@@ -1114,56 +2096,63 @@ client.on('content', (data) => {
                     }).catch((err) => console.error('MathJax typesetting failed:', err));
                 }
             }
-            scrollToBottom();
+            chatUI.scrollToBottom();
         }
     }
 });
 
+// 🚀 修复：改进 interrupted 事件处理
 client.on('interrupted', () => {
     audioStreamer?.stop();
     isUsingTool = false;
     Logger.info('Model interrupted');
-    logMessage('Model interrupted', 'system');
-    // 确保在中断时完成当前文本消息并添加到聊天历史
+    chatUI.logMessage('Model interrupted', 'system');
+    
+    // 处理文本消息
     if (currentAIMessageContentDiv && currentAIMessageContentDiv.rawMarkdownBuffer) {
         chatHistory.push({
             role: 'assistant',
-            content: currentAIMessageContentDiv.rawMarkdownBuffer // AI文本消息统一为字符串
+            content: currentAIMessageContentDiv.rawMarkdownBuffer
         });
     }
-    currentAIMessageContentDiv = null; // 重置，以便下次创建新消息
-    // 处理累积的音频数据 (保持不变)
-    if (audioDataBuffer.length > 0) {
-        const audioBlob = pcmToWavBlob(audioDataBuffer, CONFIG.AUDIO.OUTPUT_SAMPLE_RATE);
-        const audioUrl = URL.createObjectURL(audioBlob);
-        const duration = audioDataBuffer.reduce((sum, arr) => sum + arr.length, 0) / (CONFIG.AUDIO.OUTPUT_SAMPLE_RATE * 2);
-        displayAudioMessage(audioUrl, duration, 'ai');
-        audioDataBuffer = [];
-    }
+    currentAIMessageContentDiv = null;
+    
+    // 🎯 修复：中断时也处理音频数据
+    processAudioData('interrupted');
 });
 
 client.on('setupcomplete', () => {
-    logMessage('Setup complete', 'system');
+    chatUI.logMessage('Setup complete', 'system');
 });
 
+// 🚀 修复：改进 turncomplete 事件处理
 client.on('turncomplete', () => {
     isUsingTool = false;
-    logMessage('Turn complete', 'system');
-    // 在对话结束时刷新文本缓冲区并添加到聊天历史
+    chatUI.logMessage('Turn complete', 'system');
+    
+    // 处理文本消息
     if (currentAIMessageContentDiv && currentAIMessageContentDiv.rawMarkdownBuffer) {
         chatHistory.push({
             role: 'assistant',
-            content: currentAIMessageContentDiv.rawMarkdownBuffer // AI文本消息统一为字符串
+            content: currentAIMessageContentDiv.rawMarkdownBuffer
         });
     }
     currentAIMessageContentDiv = null; // 重置
-    // 处理累积的音频数据
-    if (audioDataBuffer.length > 0) {
-        const audioBlob = pcmToWavBlob(audioDataBuffer, CONFIG.AUDIO.OUTPUT_SAMPLE_RATE);
-        const audioUrl = URL.createObjectURL(audioBlob);
-        const duration = audioDataBuffer.reduce((sum, arr) => sum + arr.length, 0) / (CONFIG.AUDIO.OUTPUT_SAMPLE_RATE * 2); // 16位PCM，2字节/采样
-        displayAudioMessage(audioUrl, duration, 'ai');
-        audioDataBuffer = []; // 清空缓冲区
+    
+    // 🎯 修复：处理累积的音频数据，但不重复播放
+    // 因为音频已经在实时播放过了，这里只用于生成可下载的音频文件
+    processAudioData('turncomplete');
+
+    // 重置实时采样率侦测状态，以便下一轮重新估算
+    _realtimeDetectBytes = 0;
+    _realtimeDetectStart = 0;
+    _realtimeDetectDone = false;
+
+    // 保存历史记录
+    if (isConnected && !selectedModelConfig.isWebSocket) {
+        historyManager.saveHistory();
+    } else if (isConnected && selectedModelConfig.isWebSocket) {
+        historyManager.saveHistory();
     }
 });
 
@@ -1173,7 +2162,7 @@ client.on('error', (error) => {
     } else {
         Logger.error('Unexpected error', error);
     }
-    logMessage(`Error: ${error.message}`, 'system');
+    chatUI.logMessage(`Error: ${error.message}`, 'system');
 });
 
 // ... (新增 processHttpStream 辅助函数)
@@ -1184,253 +2173,113 @@ client.on('error', (error) => {
  * @param {string} apiKey - API Key。
  * @returns {Promise<void>}
  */
-async function processHttpStream(requestBody, apiKey) {
-    // let accumulatedText = ''; // 不再需要累积文本，直接追加
-    let currentMessages = requestBody.messages;
-
-    try {
-        const response = await fetch('/api/chat/completions', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${apiKey}`
-            },
-            body: JSON.stringify(requestBody)
-        });
-
-        if (!response.ok) {
-            const errorData = await response.json();
-            throw new Error(`HTTP API 请求失败: ${response.status} - ${errorData.error?.message || JSON.stringify(errorData)}`);
-        }
-
-        const reader = response.body.getReader();
-        const decoder = new TextDecoder('utf-8');
-        let functionCallDetected = false;
-        let currentFunctionCall = null;
-
-        // 在 HTTP 流开始时，为新的 AI 响应创建一个新的消息块
-        // 只有当不是工具响应的后续文本时才创建新消息块
-        const isToolResponseFollowUp = currentMessages.some(msg => msg.role === 'tool');
-        if (!isToolResponseFollowUp) {
-            currentAIMessageContentDiv = createAIMessageElement();
-        }
-
-
-        while (true) {
-            const { done, value } = await reader.read();
-            if (done) {
-                Logger.info('HTTP Stream finished.');
-                break;
-            }
-
-            const chunk = decoder.decode(value, { stream: true });
-            chunk.split('\n\n').forEach(part => {
-                if (part.startsWith('data: ')) {
-                    const jsonStr = part.substring(6);
-                    if (jsonStr === '[DONE]') {
-                        return;
-                    }
-                    try {
-                        const data = JSON.parse(jsonStr);
-                        if (data.choices && data.choices.length > 0) {
-                            const choice = data.choices[0];
-                            if (choice.delta) {
-                                // 检查是否有 functionCall
-                                const functionCallPart = choice.delta.parts?.find(p => p.functionCall);
-                                if (functionCallPart) {
-                                    functionCallDetected = true;
-                                    currentFunctionCall = functionCallPart.functionCall;
-                                    Logger.info('Function call detected:', currentFunctionCall);
-                                    logMessage(`模型请求工具: ${currentFunctionCall.name}`, 'system');
-                                    // 在工具调用前，确保当前 AI 消息完成
-                                    if (currentAIMessageContentDiv) {
-                                        currentAIMessageContentDiv = null; // 重置，以便工具响应后创建新消息
-                                    }
-                                } else if (choice.delta.content) {
-                                    // 只有在没有 functionCall 时才累积文本
-                                    if (!functionCallDetected) {
-                                        if (!currentAIMessageContentDiv) {
-                                            currentAIMessageContentDiv = createAIMessageElement();
-                                        }
-                                        // 追加到原始Markdown缓冲区
-                                        currentAIMessageContentDiv.rawMarkdownBuffer += choice.delta.content || '';
-                                        // 立即渲染Markdown
-                                        currentAIMessageContentDiv.markdownContainer.innerHTML = marked.parse(currentAIMessageContentDiv.rawMarkdownBuffer);
-                                        // 触发 MathJax 渲染
-                                        if (typeof MathJax !== 'undefined') {
-                                            if (typeof MathJax !== 'undefined' && MathJax.startup) {
-                                               MathJax.startup.promise.then(() => {
-                                                   MathJax.typeset([currentAIMessageContentDiv.markdownContainer]);
-                                               }).catch((err) => console.error('MathJax typesetting failed:', err));
-                                            }
-                                        }
-                                        scrollToBottom();
-                                    }
-                                }
-                            }
-                        }
-                        if (data.usage) {
-                            Logger.info('Usage:', data.usage);
-                        }
-                    } catch (e) {
-                        Logger.error('Error parsing SSE chunk:', e, jsonStr);
-                    }
-                }
-            });
-        }
-
-        // 处理工具调用
-        if (functionCallDetected && currentFunctionCall) {
-            // 确保在处理工具调用前，当前 AI 消息已完成并添加到聊天历史
-            if (currentAIMessageContentDiv && currentAIMessageContentDiv.rawMarkdownBuffer) {
-                chatHistory.push({
-                    role: 'assistant',
-                    content: currentAIMessageContentDiv.rawMarkdownBuffer // AI文本消息统一为字符串
-                });
-            }
-            currentAIMessageContentDiv = null; // 重置，以便工具响应后创建新消息
-
-            try {
-                isUsingTool = true;
-                logMessage(`执行工具: ${currentFunctionCall.name} with args: ${JSON.stringify(currentFunctionCall.args)}`, 'system');
-                const toolResult = await toolManager.handleToolCall(currentFunctionCall);
-
-                const toolResponsePart = toolResult.functionResponses[0].response.output;
-
-                // 将模型调用工具添加到 chatHistory
-                chatHistory.push({
-                    role: 'assistant', // 模型角色
-                    // 恢复使用 parts 数组以匹配参考代码
-                    parts: [{
-                        functionCall: {
-                            name: currentFunctionCall.name,
-                            args: currentFunctionCall.args
-                        }
-                    }]
-                });
-
-                // 将工具响应添加到 chatHistory
-                chatHistory.push({
-                    role: 'tool', // 工具角色
-                    // 恢复使用 parts 数组
-                    parts: [{
-                        functionResponse: {
-                            name: currentFunctionCall.name,
-                            response: toolResponsePart
-                        }
-                    }]
-                });
-
-                // 递归调用，将工具结果发送回模型
-                await processHttpStream({
-                    ...requestBody,
-                    messages: chatHistory, // 直接使用更新后的 chatHistory
-                    tools: toolManager.getToolDeclarations(),
-                    sessionId: currentSessionId // 确保传递会话ID
-                }, apiKey);
-
-            } catch (toolError) {
-                Logger.error('工具执行失败:', toolError);
-                logMessage(`工具执行失败: ${toolError.message}`, 'system');
-                
-                // 将模型调用工具添加到 chatHistory (即使失败也要记录)
-                chatHistory.push({
-                    role: 'assistant',
-                    parts: [{
-                        functionCall: {
-                            name: currentFunctionCall.name,
-                            args: currentFunctionCall.args
-                        }
-                    }]
-                });
-
-                // 将工具错误响应添加到 chatHistory
-                chatHistory.push({
-                    role: 'tool',
-                    parts: [{
-                        functionResponse: {
-                            name: currentFunctionCall.name,
-                            response: { error: toolError.message }
-                        }
-                    }]
-                });
-
-                await processHttpStream({
-                    ...requestBody,
-                    messages: chatHistory, // 直接使用更新后的 chatHistory
-                    tools: toolManager.getToolDeclarations(),
-                    sessionId: currentSessionId // 确保传递会话ID
-                }, apiKey);
-            } finally {
-                isUsingTool = false;
-            }
-        } else {
-            // 如果没有工具调用，且流已完成，将完整的 AI 响应添加到 chatHistory
-            if (currentAIMessageContentDiv && currentAIMessageContentDiv.rawMarkdownBuffer) {
-                chatHistory.push({
-                    role: 'assistant',
-                    content: currentAIMessageContentDiv.rawMarkdownBuffer // AI文本消息统一为字符串
-                });
-            }
-            currentAIMessageContentDiv = null; // 重置
-            logMessage('Turn complete (HTTP)', 'system');
-        }
-
-    } catch (error) {
-        Logger.error('处理 HTTP 流失败:', error);
-        logMessage(`处理流失败: ${error.message}`, 'system');
-        // 错误发生时也重置 currentAIMessageContentDiv
-        if (currentAIMessageContentDiv) {
-            currentAIMessageContentDiv = null;
-        }
-    }
-}
-
+// The processHttpStream function has been moved to chat-api-handler.js
 
 // 添加全局错误处理
 globalThis.addEventListener('error', (event) => {
-    logMessage(`系统错误: ${event.message}`, 'system');
+    chatUI.logMessage(`系统错误: ${event.message}`, 'system');
 });
 
 client.on('message', (message) => {
     if (message.error) {
         Logger.error('Server error:', message.error);
-        logMessage(`Server error: ${message.error}`, 'system');
+        chatUI.logMessage(`Server error: ${message.error}`, 'system');
     }
 });
 
-sendButton.addEventListener('click', handleSendMessage);
+sendButton.addEventListener('click', () => handleSendMessage(attachmentManager)); // T2: 传入管理器
+
+/**
+ * 🚀 修复：改进音频数据处理，确保实时播放和最终显示都正常工作
+ * @param {string} source - 来源 ('turncomplete', 'interrupted', 'user_interrupt')
+ */
+function processAudioData(source) {
+    if (audioDataBuffer.length > 0) {
+        try {
+            // Use the runtime-detected sample rate from the audioStreamer when available.
+            const finalSampleRate = (audioStreamer && audioStreamer.sampleRate) || CONFIG.AUDIO.OUTPUT_SAMPLE_RATE;
+            const audioBlob = pcmToWavBlob(audioDataBuffer, finalSampleRate);
+            const audioUrl = URL.createObjectURL(audioBlob);
+            const duration = audioDataBuffer.reduce((sum, arr) => sum + arr.length, 0) / (finalSampleRate * 2);
+            
+            console.log('🚀 处理最终音频数据:', {
+                source: source,
+                bufferLength: audioDataBuffer.length,
+                totalBytes: audioDataBuffer.reduce((sum, arr) => sum + arr.length, 0),
+                duration: duration,
+                audioUrl: audioUrl
+            });
+            
+            // 🎯 修复：只在需要时才显示音频消息
+            // 如果音频已经实时播放过了，可以跳过显示，或者仍然显示供用户重播
+            if (source !== 'realtime_only') {
+                // 显示音频消息（供重播和下载）
+                chatUI.displayAudioMessage(audioUrl, duration, 'ai', audioBlob);
+                
+                // 将音频消息添加到聊天历史
+                chatHistory.push({
+                    role: 'assistant',
+                    content: `[音频消息，时长: ${duration.toFixed(2)}秒]`,
+                    audioData: audioBlob
+                });
+            }
+            
+        } catch (error) {
+            console.error('音频处理失败:', error);
+            chatUI.logMessage(`音频处理失败: ${error.message}`, 'system');
+        } finally {
+            audioDataBuffer = []; // 清空缓冲区
+        }
+    }
+}
 
 /**
  * @function handleInterruptPlayback
  * @description 处理中断按钮点击事件，停止当前语音播放。
  * @returns {void}
  */
+// 🚀 修复：改进中断播放处理
 function handleInterruptPlayback() {
     if (audioStreamer) {
         audioStreamer.stop();
         Logger.info('Audio playback interrupted by user.');
-        logMessage('语音播放已中断', 'system');
-        // 确保在中断时也刷新文本缓冲区并添加到聊天历史
+        chatUI.logMessage('语音播放已中断', 'system');
+        
+        // 处理文本消息
         if (currentAIMessageContentDiv && currentAIMessageContentDiv.rawMarkdownBuffer) {
             chatHistory.push({
                 role: 'assistant',
-                content: currentAIMessageContentDiv.rawMarkdownBuffer // AI文本消息统一为字符串
+                content: currentAIMessageContentDiv.rawMarkdownBuffer
             });
         }
-        currentAIMessageContentDiv = null; // 重置
-        // 处理累积的音频数据
-        if (audioDataBuffer.length > 0) {
-            const audioBlob = pcmToWavBlob(audioDataBuffer, CONFIG.AUDIO.OUTPUT_SAMPLE_RATE);
-            const audioUrl = URL.createObjectURL(audioBlob);
-            const duration = audioDataBuffer.reduce((sum, arr) => sum + arr.length, 0) / (CONFIG.AUDIO.OUTPUT_SAMPLE_RATE * 2); // 16位PCM，2字节/采样
-            displayAudioMessage(audioUrl, duration, 'ai');
-            audioDataBuffer = []; // 清空缓冲区
-        }
+        currentAIMessageContentDiv = null;
+        
+        // 🎯 修复：用户中断时处理音频数据
+        processAudioData('user_interrupt');
     } else {
         Logger.warn('Attempted to interrupt playback, but audioStreamer is not initialized.');
-        logMessage('当前没有语音播放可中断', 'system');
+        chatUI.logMessage('当前没有语音播放可中断', 'system');
     }
+}
+
+// 🚀 修复：添加音频调试功能
+function debugAudioState() {
+    console.log('🔊 音频状态调试:', {
+        audioCtx: audioCtx ? {
+            state: audioCtx.state,
+            sampleRate: audioCtx.sampleRate
+        } : '未初始化',
+        audioStreamer: audioStreamer ? {
+            isPlaying: audioStreamer.isPlaying,
+            audioQueueLength: audioStreamer.audioQueue ? audioStreamer.audioQueue.length : 0
+        } : '未初始化',
+        audioDataBuffer: {
+            length: audioDataBuffer.length,
+            totalBytes: audioDataBuffer.reduce((sum, arr) => sum + arr.length, 0)
+        },
+        isRecording: isRecording,
+        isConnected: isConnected
+    });
 }
 
 interruptButton.addEventListener('click', handleInterruptPlayback); // 新增事件监听器
@@ -1449,7 +2298,7 @@ messageInput.addEventListener('keydown', (event) => {
         // 在 Windows/Linux 上，通常是 Shift + Enter 或 Ctrl + Enter
         if (event.shiftKey || event.ctrlKey || event.metaKey) {
             event.preventDefault(); // 阻止默认的换行行为
-            handleSendMessage();
+            handleSendMessage(attachmentManager); // T2: 传入管理器
         } else {
             // 允许默认的换行行为
             // 对于 textarea，单独的 Enter 键默认就是换行，所以这里不需要额外处理
@@ -1485,23 +2334,24 @@ mobileConnectButton?.addEventListener('click', () => {
     }
 });
 
-
 // 监听模型选择变化
 const modelSelect = document.getElementById('model-select'); // 确保这里获取到 modelSelect
 modelSelect.addEventListener('change', () => {
     const selectedModelName = modelSelect.value;
     selectedModelConfig = CONFIG.API.AVAILABLE_MODELS.find(m => m.name === selectedModelName);
     if (!selectedModelConfig) {
-        logMessage(`未找到模型配置: ${selectedModelName}`, 'system');
+        chatUI.logMessage(`未找到模型配置: ${selectedModelName}`, 'system');
         // 恢复到默认模型配置
         selectedModelConfig = CONFIG.API.AVAILABLE_MODELS.find(m => m.name === CONFIG.API.MODEL_NAME);
         modelSelect.value = CONFIG.API.MODEL_NAME;
     }
     Logger.info(`模型选择已更改为: ${selectedModelConfig.displayName}`);
-    logMessage(`模型选择已更改为: ${selectedModelConfig.displayName}`, 'system');
+    chatUI.logMessage(`模型选择已更改为: ${selectedModelConfig.displayName}`, 'system');
+    // 🚀 关键修复：更新按钮状态
+    updateConnectionStatus();
     // 如果已连接，断开连接以应用新模型
     if (isConnected) {
-        disconnect(); // 调用统一的断开连接函数
+        disconnect();
     }
 });
 
@@ -1510,7 +2360,7 @@ modelSelect.addEventListener('change', () => {
  */
 async function connect() {
     if (!apiKeyInput.value) {
-        logMessage('请输入 API Key', 'system');
+        chatUI.logMessage('请输入 API Key', 'system');
         return;
     }
 
@@ -1520,7 +2370,7 @@ async function connect() {
     localStorage.setItem('system_instruction', systemInstructionInput.value);
     localStorage.setItem('video_fps', fpsInput.value); // 保存 FPS
 
-    // 根据选定的模型配置决定连接方式
+    // 🚀 关键修复：根据模型配置决定连接方式
     if (selectedModelConfig.isWebSocket) {
         await connectToWebsocket();
     } else {
@@ -1535,9 +2385,9 @@ function disconnect() {
     if (selectedModelConfig.isWebSocket) {
         disconnectFromWebsocket();
     } else {
-        // 对于 HTTP 模式，没有“断开连接”的概念，但需要重置 UI 状态
+        // 对于 HTTP 模式，重置UI状态
         resetUIForDisconnectedState();
-        logMessage('已断开连接 (HTTP 模式)', 'system');
+        chatUI.logMessage('已断开连接 (HTTP 模式)', 'system');
     }
 }
 
@@ -1557,12 +2407,12 @@ async function connectToHttp() {
         micButton.disabled = true;
         cameraButton.disabled = true;
         screenButton.disabled = true;
-        logMessage(`已连接到 Gemini HTTP API (${selectedModelConfig.displayName})`, 'system');
+        chatUI.logMessage(`已连接到 Gemini HTTP API (${selectedModelConfig.displayName})`, 'system');
         updateConnectionStatus();
     } catch (error) {
         const errorMessage = error.message || '未知错误';
         Logger.error('HTTP 连接错误:', error);
-        logMessage(`HTTP 连接错误: ${errorMessage}`, 'system');
+        chatUI.logMessage(`HTTP 连接错误: ${errorMessage}`, 'system');
         resetUIForDisconnectedState();
     }
 }
@@ -1590,11 +2440,11 @@ function resetUIForDisconnectedState() {
         isRecording = false;
         updateMicIcon();
     }
-    if (videoManager) {
-        stopVideo();
+    if (videoHandler && videoHandler.getIsVideoActive()) { // T3: 使用 videoHandler 停止视频
+        videoHandler.stopVideo();
     }
-    if (screenRecorder) {
-        stopScreenSharing();
+    if (screenHandler && screenHandler.getIsScreenActive()) { // T4: 使用 screenHandler 停止屏幕共享
+        screenHandler.stopScreenSharing();
     }
 }
 
@@ -1614,17 +2464,30 @@ function updateConnectionStatus() {
         }
     });
 
-    // 根据连接状态和模型类型禁用/启用媒体按钮
+    // 🚀 关键修复：根据模型类型和连接状态控制按钮状态
+    const isWebSocketModel = selectedModelConfig.isWebSocket;
+    
+    // 媒体按钮仅在 WebSocket 模式且已连接时启用
     const mediaButtons = [micButton, cameraButton, screenButton, chatVoiceInputButton];
     mediaButtons.forEach(btn => {
         if (btn) {
-            btn.disabled = !isConnected || !selectedModelConfig.isWebSocket;
+            btn.disabled = !isConnected || !isWebSocketModel;
         }
     });
     
-    // 附件按钮仅在 HTTP 模式下可用
+    // 附件按钮仅在 HTTP 模式且已连接时启用
     if (attachmentButton) {
-        attachmentButton.disabled = !isConnected || selectedModelConfig.isWebSocket;
+        attachmentButton.disabled = !isConnected || isWebSocketModel;
+    }
+    
+    // 发送按钮在任何模式连接后都启用
+    if (sendButton) {
+        sendButton.disabled = !isConnected;
+    }
+    
+    // 消息输入框在任何模式连接后都启用
+    if (messageInput) {
+        messageInput.disabled = !isConnected;
     }
 }
 
@@ -1634,14 +2497,17 @@ updateConnectionStatus(); // 初始更新连接状态
  * Updates the display of media preview containers.
  */
 function updateMediaPreviewsDisplay() {
-    if (isVideoActive || isScreenSharing) {
+    // 使用 videoHandler.getIsVideoActive() 获取摄像头状态
+    const isVideoActiveNow = videoHandler ? videoHandler.getIsVideoActive() : false;
+
+    if (isVideoActiveNow || (screenHandler && screenHandler.getIsScreenActive())) { // T4: 使用 screenHandler.getIsScreenActive()
         mediaPreviewsContainer.style.display = 'flex'; // 使用 flex 布局
-        if (isVideoActive) {
+        if (isVideoActiveNow) {
             videoPreviewContainer.style.display = 'block';
         } else {
             videoPreviewContainer.style.display = 'none';
         }
-        if (isScreenSharing) {
+        if (screenHandler && screenHandler.getIsScreenActive()) { // T4: 使用 screenHandler.getIsScreenActive()
             screenContainer.style.display = 'block';
         } else {
             screenContainer.style.display = 'none';
@@ -1652,229 +2518,25 @@ function updateMediaPreviewsDisplay() {
 }
 
 /**
- * Handles the video toggle. Starts or stops video streaming.
- * @returns {Promise<void>}
+ * Initializes the application and all its modules.
  */
-async function handleVideoToggle() {
-    if (!isVideoActive) {
-        // 开启摄像头逻辑...
-        Logger.info('Video toggle clicked, current state:', { isVideoActive, isConnected });
+async function initializeApp() {
+    try {
         
-        localStorage.setItem('video_fps', fpsInput.value);
-
-        try {
-            // 显示预览容器
-            mediaPreviewsContainer.style.display = 'flex';
-            videoPreviewContainer.style.display = 'block';
-
-            Logger.info('Attempting to start video');
-            if (!videoManager) {
-                videoManager = new VideoManager(videoPreviewElement, { // 传入 videoPreviewElement
-                    width: 640,
-                    height: 480,
-                    facingMode: 'user' // 默认前置摄像头
-                });
-            }
-            
-            await videoManager.start(fpsInput.value,(frameData) => {
-                if (isConnected) {
-                    client.sendRealtimeInput([frameData]);
-                }
-            });
-
-            isVideoActive = true;
-            cameraButton.classList.add('active');
-            cameraButton.textContent = 'videocam_off'; // 直接修改按钮文本
-            updateMediaPreviewsDisplay(); // 更新预览显示
-            Logger.info('摄像头已启动');
-            logMessage('摄像头已启动', 'system');
-
-        } catch (error) {
-            Logger.error('摄像头错误:', error);
-            logMessage(`错误: ${error.message}`, 'system');
-            isVideoActive = false;
-            videoManager = null;
-            cameraButton.classList.remove('active');
-            cameraButton.textContent = 'videocam'; // 直接修改按钮文本
-            // 错误处理时隐藏预览
-            mediaPreviewsContainer.style.display = 'none';
-            videoPreviewContainer.style.display = 'none';
-            updateMediaPreviewsDisplay(); // 更新预览显示
-        }
-    } else {
-        // 修复：确保能通过控制台按钮关闭摄像头
-        stopVideo();
+        // Initialize chess module
+        initializeChessCore();
+        
+    } catch (error) {
+        Logger.error('Failed to initialize application:', error);
     }
 }
 
-/**
- * Stops the video streaming.
- */
-function stopVideo() {
-    // 确保更新状态
-    isVideoActive = false;
-    // 修复：更新控制台按钮状态
-    cameraButton.textContent = 'videocam';
-    cameraButton.classList.remove('active');
-    
-    // 其余关闭逻辑保持不变...
-    Logger.info('Stopping video...');
-    if (videoManager) {
-        videoManager.stop(); // 调用 videoManager 自身的停止方法
-        // 关闭视频流
-        if (videoManager.stream) { // videoManager.stream 应该保存了 MediaStream 对象
-            videoManager.stream.getTracks().forEach(track => track.stop());
-        }
-        videoManager = null; // 清空 videoManager 引用
-    }
-    // 停止时隐藏预览
-    mediaPreviewsContainer.style.display = 'none';
-    videoPreviewContainer.style.display = 'none';
-    updateMediaPreviewsDisplay(); // 更新预览显示
-    logMessage('摄像头已停止', 'system');
-}
-
-cameraButton.addEventListener('click', () => {
-    if (isConnected) handleVideoToggle();
-});
-stopVideoButton.addEventListener('click', stopVideo); // 绑定新的停止视频按钮
-
-// 获取预览窗中的翻转按钮
-const flipCameraButton = document.getElementById('flip-camera');
-
-// 绑定翻转按钮事件（确保在DOM加载完成后执行）
-// 仅在非触屏设备上绑定 click 事件，避免与移动端 touchstart 冲突
-if (!('ontouchstart' in window)) {
-    flipCameraButton.addEventListener('click', async () => {
-        if (videoManager) {
-            flipCameraButton.disabled = true; // 禁用按钮防止重复点击
-            try {
-                await videoManager.flipCamera();
-                logMessage('摄像头已翻转', 'system');
-            } catch (error) {
-                logMessage(`翻转摄像头失败: ${error.message}`, 'error');
-                console.error('翻转摄像头失败:', error);
-            } finally {
-                flipCameraButton.disabled = false; // 重新启用按钮
-            }
-        } else {
-            logMessage('摄像头未激活，无法翻转', 'system');
-        }
-    });
-}
-
-cameraButton.disabled = true;
-
-/**
- * Handles the screen share toggle. Starts or stops screen sharing.
- * @returns {Promise<void>}
- */
-async function handleScreenShare() {
-    if (!isScreenSharing) {
-        try {
-            Logger.info('Starting screen sharing...'); // 添加日志
-            // 显示预览容器
-            mediaPreviewsContainer.style.display = 'flex';
-            screenContainer.style.display = 'block';
-
-            screenRecorder = new ScreenRecorder();
-            // 性能优化：添加帧节流
-            const throttle = (func, limit) => {
-                let lastFunc;
-                let lastRan;
-                return function() {
-                    const context = this;
-                    const args = arguments;
-                    if (!lastRan) {
-                        func.apply(context, args);
-                        lastRan = Date.now();
-                    } else {
-                        clearTimeout(lastFunc);
-                        lastFunc = setTimeout(function() {
-                            if ((Date.now() - lastRan) >= limit) {
-                                func.apply(context, args);
-                                lastRan = Date.now();
-                            }
-                        }, limit - (Date.now() - lastRan));
-                    }
-                }
-            };
-            const throttledSendFrame = throttle((frameData) => { // 移除 no-this-alias 警告，因为这里没有 this 的别名问题
-                if (isConnected) {
-                    client.sendRealtimeInput([{
-                        mimeType: "image/jpeg",
-                        data: frameData
-                    }]);
-                }
-            }, 1000 / fpsInput.value); // 根据 fpsInput 的值进行节流
-
-            await screenRecorder.start(screenPreview, throttledSendFrame);
-
-            isScreenSharing = true;
-            // 修改按钮状态
-            screenButton.textContent = 'stop_screen_share';
-            screenButton.classList.add('active');
-            updateMediaPreviewsDisplay(); // 更新预览显示
-            Logger.info('屏幕共享已启动');
-            logMessage('屏幕共享已启动', 'system');
-
-        } catch (error) {
-            Logger.error('屏幕共享错误:', error);
-            logMessage(`错误: ${error.message}`, 'system');
-            // 确保错误时重置状态
-            isScreenSharing = false;
-            screenButton.classList.remove('active');
-            screenButton.textContent = 'screen_share';
-            mediaPreviewsContainer.style.display = 'none';
-            screenContainer.style.display = 'none';
-            updateMediaPreviewsDisplay(); // 更新预览显示
-        }
-    } else {
-        stopScreenSharing();
-    }
-}
-
-/**
- * Stops the screen sharing.
- * @returns {void}
- */
-function stopScreenSharing() {
-    if (screenRecorder) {
-        screenRecorder.stop();
-        screenRecorder = null;
-    }
-    isScreenSharing = false;
-    screenButton.classList.remove('active');
-    screenButton.textContent = 'screen_share'; // 直接修改按钮文本
-    // 停止时隐藏预览
-    mediaPreviewsContainer.style.display = 'none';
-    screenContainer.style.display = 'none';
-    updateMediaPreviewsDisplay(); // 更新预览显示
-    logMessage('屏幕共享已停止', 'system');
-}
-
-screenButton.addEventListener('click', () => {
-    if (isConnected) handleScreenShare();
-});
-stopScreenButton.addEventListener('click', stopScreenSharing); // 绑定新的停止屏幕共享按钮
-
-screenButton.disabled = true;
+initializeApp();
 
 /**
  * Initializes mobile-specific event handlers.
  */
 function initMobileHandlers() {
-    // 移动端摄像头按钮
-    document.getElementById('camera-button').addEventListener('touchstart', (e) => {
-        e.preventDefault();
-        if (isConnected) handleVideoToggle();
-    });
-    
-    // 移动端屏幕共享按钮
-    document.getElementById('screen-button').addEventListener('touchstart', (e) => {
-        e.preventDefault();
-        if (isConnected) handleScreenShare();
-    });
 
     // 新增：移动端麦克风按钮
     document.getElementById('mic-button').addEventListener('touchstart', (e) => {
@@ -1882,40 +2544,20 @@ function initMobileHandlers() {
         if (isConnected) handleMicToggle();
     });
     
-    // 移动端翻转摄像头
-    document.getElementById('flip-camera').addEventListener('touchstart', async (e) => {
-        e.preventDefault();
-        if (videoManager) {
-            const flipCameraButton = document.getElementById('flip-camera');
-            flipCameraButton.disabled = true; // 禁用按钮防止重复点击
-            try {
-                await videoManager.flipCamera();
-                logMessage('摄像头已翻转', 'system');
-            } catch (error) {
-                logMessage(`翻转摄像头失败: ${error.message}`, 'error');
-                console.error('翻转摄像头失败:', error);
-            } finally {
-                flipCameraButton.disabled = false; // 重新启用按钮
-            }
-        } else {
-            logMessage('摄像头未激活，无法翻转', 'system');
-        }
-    });
-    
     /**
      * 检查音频播放状态。
      */
     function checkAudioPlayback() {
         if (audioStreamer && audioStreamer.isPlaying) {
-            logMessage('音频正在播放中...', 'system');
+            chatUI.logMessage('音频正在播放中...', 'system');
         } else {
-            logMessage('音频未播放', 'system');
+            chatUI.logMessage('音频未播放', 'system');
         }
     }
     
     // 在连接成功后添加检查
     client.on('setupcomplete', () => {
-        logMessage('Setup complete', 'system');
+        chatUI.logMessage('Setup complete', 'system');
         setTimeout(checkAudioPlayback, 1000); // 1秒后检查音频状态
     });
     
@@ -1925,9 +2567,9 @@ function initMobileHandlers() {
     async function checkAudioPermissions() {
         try {
             const permission = await navigator.permissions.query({ name: 'speaker' });
-            logMessage(`扬声器权限状态: ${permission.state}`, 'system');
+            chatUI.logMessage(`扬声器权限状态: ${permission.state}`, 'system');
         } catch (error) {
-            logMessage(`扬声器权限检查失败: ${error.message}`, 'system');
+            chatUI.logMessage(`扬声器权限检查失败: ${error.message}`, 'system');
         }
     }
 }
@@ -1943,26 +2585,30 @@ document.addEventListener('DOMContentLoaded', () => {
 
     /**
      * @function
-     * @description 处理“新建聊天”按钮点击事件，刷新页面以开始新的聊天。
-     * @returns {void}
-     */
-    /**
-     * @function
-     * @description 处理“新建聊天”按钮点击事件，根据当前激活的模式清空对应的聊天历史。
+     * @description 处理"新建聊天"按钮点击事件，刷新页面以开始新的聊天。
      * @returns {void}
      */
     newChatButton.addEventListener('click', () => {
-        chatHistory = []; // 清空聊天历史
-        currentSessionId = null; // 重置会话ID
-        messageHistory.innerHTML = ''; // 清空显示区域
-        logMessage('新聊天已开始', 'system');
-        // 如果不需要完全刷新页面，可以移除这行
-        // location.reload();
+        if (currentSessionId) {
+            cleanupSession(currentSessionId);
+        }
+        resetFileManagerAuth(); // 🎯 核心修改：重置文件管理器状态（包括关闭模态框）
+        // 仅在 HTTP 模式下启用历史记录功能
+        if (selectedModelConfig && !selectedModelConfig.isWebSocket) {
+            historyManager.generateNewSession();
+        } else {
+            // 对于 WebSocket 模式或未连接时，保持原有简单重置逻辑
+            chatHistory = [];
+            currentSessionId = null;
+            messageHistory.innerHTML = '';
+            chatUI.logMessage('新聊天已开始', 'system');
+            showSystemMessage('实时模式不支持历史记录。');
+        }
     });
 
     /**
      * @function
-     * @description 处理“新建聊天”按钮点击事件，刷新页面以开始新的聊天。
+     * @description 处理"新建聊天"按钮点击事件，刷新页面以开始新的聊天。
      * @returns {void}
      */
     // 添加视图缩放阻止
@@ -2022,11 +2668,159 @@ document.addEventListener('DOMContentLoaded', () => {
                 const isNearBottom = messageHistory.scrollHeight - messageHistory.clientHeight <=
                                     messageHistory.scrollTop + threshold;
                 if (isNearBottom) {
-                    scrollToBottom(); // 尝试滚动到底部
+                    chatUI.scrollToBottom(); // 尝试滚动到底部
                 }
             }, { passive: true });
         }
     }
+    // --- START: Add Voice Input Listeners for Chat Mode ---
+    if (chatVoiceInputButton) {
+        // Mouse events for press-and-hold recording
+        chatVoiceInputButton.addEventListener('mousedown', startChatRecording);
+        chatVoiceInputButton.addEventListener('mouseup', stopChatRecording);
+        chatVoiceInputButton.addEventListener('mouseleave', () => {
+            if (isChatRecording) {
+                cancelChatRecording();
+            }
+        });
+
+        // Touch events for press-and-hold recording on mobile
+        chatVoiceInputButton.addEventListener('touchstart', (e) => {
+            e.preventDefault(); // Prevent scrolling/zooming
+            chatInitialTouchY = e.touches[0].clientY; 
+            startChatRecording();
+        });
+        chatVoiceInputButton.addEventListener('touchend', (e) => {
+            e.preventDefault();
+            stopChatRecording();
+        });
+        chatVoiceInputButton.addEventListener('touchmove', (e) => {
+            if (isChatRecording) {
+                const currentTouchY = e.touches[0].clientY;
+                // Check for a significant upward swipe to cancel
+                if (chatInitialTouchY - currentTouchY > 50) {
+                    cancelChatRecording();
+                }
+            }
+        });
+    }
+    // --- END: Add Voice Input Listeners for Chat Mode ---
+});
+// =========================================================================
+// 🚀 [最终方案 - 新增] 监听 Agent 实时生成的图片事件
+// =========================================================================
+// 这个事件由 DeepResearchAgent.js 中的 _handleGeneratedImage 方法触发，
+// 并通过 Orchestrator.js 的 setupHandlers 转发为 'research:image_generated'。
+// 它的唯一职责是实时显示图片，不参与最终报告的生成。
+window.addEventListener('research:image_generated', (e) => {
+    // 从事件详情中解构出标题和 base64 数据
+    const { title, base64 } = e.detail.data;
+    
+    // 检查 chatUI 模块及其 displayImageResult 函数是否可用
+    if (window.chatUI && typeof window.chatUI.displayImageResult === 'function') {
+        // 构造一个完整的 Data URL，这是 <img> 标签和 displayImageResult 函数所期望的格式
+        const dataUrl = `data:image/png;base64,${base64}`;
+        
+        // 调用您现有的、功能强大的 displayImageResult 函数
+        // 它会自动处理图片在聊天窗口的显示、添加点击事件，并连接到 image-manager.js 的模态框
+        window.chatUI.displayImageResult(dataUrl, title, `${title.replace(/\s/g, '_')}.png`);
+        
+        // 给出清晰的用户反馈
+        showToast(`✅ Agent 已生成图表: ${title}`);
+    } else {
+        // 如果 UI 函数不可用，提供一个健壮的降级方案
+        console.warn('chatUI.displayImageResult function not found. Cannot display generated image in chat window.');
+        chatUI.logMessage(`Agent generated an image: "${title}" (display function unavailable)`, 'system');
+    }
+});
+
+// 🚀🚀🚀 [v2.2 核心新增] 监听 Agent 生成的文件事件 🚀🚀🚀
+// 这个事件由 DeepResearchAgent.js 中的 _executeToolCall 方法触发
+window.addEventListener('on_file_generated', (event) => {
+    const fileData = event.detail.data;
+    console.log("📦 [Main.js] 接收到 on_file_generated 事件，准备创建下载链接...");
+
+    if (fileData && fileData.data_base64) {
+        // 调用我们刚刚在 chat-ui.js 中导出的新函数
+        chatUI.createFileDownloadLink(
+            fileData.data_base64,
+            fileData.title,
+            fileData.type
+        );
+        showToast(`✅ Agent 已生成文件: ${fileData.title}`);
+    } else {
+        console.warn('[Main.js] on_file_generated 事件未包含有效的文件数据。');
+        showSystemMessage("Agent尝试生成文件，但未能成功返回文件内容。");
+    }
+});
+
+// =========================================================================
+// 🚀 [最终方案 V2 - 新增] Agent 专属的最终报告渲染入口
+// =========================================================================
+window.addEventListener('research:end', (e) => {
+    console.log("🏁 [Main.js] 接收到 research:end 事件，准备渲染最终报告...");
+    const result = e.detail.data;
+
+    // 1. 健壮性检查
+    if (!result || !result.report) {
+        console.warn("[Main.js] 'research:end' 事件未包含有效的报告内容，跳过渲染。");
+        showSystemMessage("研究已结束，但未能生成最终报告。");
+        return;
+    }
+
+    // 2. 隐藏思考动画
+    if (window.agentThinkingDisplay) {
+        window.agentThinkingDisplay.hide();
+    }
+
+    // 3. 显示摘要卡片 (如果存在 displayAgentSummary 函数)
+    if (result.success && typeof displayAgentSummary === 'function') {
+        displayAgentSummary(result);
+    }
+    
+    // 4. 获取最终 Markdown 并渲染
+    const finalReportMarkdown = result.report;
+    const aiMessage = chatUI.createAIMessageElement();
+    aiMessage.rawMarkdownBuffer = finalReportMarkdown;
+    aiMessage.markdownContainer.innerHTML = marked.parse(finalReportMarkdown);
+    
+    // 应用数学公式和代码高亮
+    if (typeof MathJax !== 'undefined' && MathJax.startup) {
+        MathJax.startup.promise.then(() => {
+            MathJax.typeset([aiMessage.markdownContainer]);
+        });
+    }
+    aiMessage.markdownContainer.querySelectorAll('pre code').forEach((block) => {
+        hljs.highlightElement(block);
+    });
+    
+    chatUI.scrollToBottom();
+
+    // 🔥🔥🔥 [核心修改：历史记录持久化] 🔥🔥🔥
+    // 确保仅在 HTTP 模式下保存（WebSocket模式通常不保存这种长文本历史）
+    if (selectedModelConfig && !selectedModelConfig.isWebSocket) {
+        console.log("💾 [Main.js] 正在将 Agent 报告保存到历史记录...");
+        
+        // 1. 手动将 Agent 的回复推入 chatHistory 全局数组
+        // 这是关键：让后续的对话（第5轮、第6轮）能看到这份报告
+        chatHistory.push({
+            role: 'assistant',
+            content: finalReportMarkdown,
+            metadata: {
+                is_agent_report: true,
+                agent_mode: result.research_mode,
+                sources_count: result.sources ? result.sources.length : 0
+            }
+        });
+
+        // 2. 调用 HistoryManager 进行云端保存
+        // 确保 historyManager 实例已初始化
+        if (historyManager) {
+            historyManager.saveHistory();
+            console.log("✅ [Main.js] Agent 报告已保存到云端历史。");
+        }
+    }
+    // 🔥🔥🔥 [修改结束] 🔥🔥🔥
 });
 
 /**
@@ -2035,15 +2829,6 @@ document.addEventListener('DOMContentLoaded', () => {
  */
 function isMobileDevice() {
     return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
-}
-
-/**
- * @function generateUniqueSessionId
- * @description 生成一个唯一的会话ID。
- * @returns {string} 唯一的会话ID字符串。
- */
-function generateUniqueSessionId() {
-    return 'session-' + Date.now() + '-' + Math.random().toString(36).substring(2, 9);
 }
 
 /**
@@ -2059,409 +2844,12 @@ function checkBrowserCompatibility() {
     const userAgent = navigator.userAgent;
     for (const browser of incompatibleBrowsers) {
         if (browser.test.test(userAgent) && !browser.supported) {
-            logMessage(`警告：您正在使用${browser.name}。${browser.message}`, 'system');
+            chatUI.logMessage(`警告：您正在使用${browser.name}。${browser.message}`, 'system');
             // 可以在这里显示一个更明显的 UI 警告
             return false;
         }
     }
     return true;
-}
-
-/**
- * @function initTranslation
- * @description 初始化翻译功能，包括UI元素的获取、语言下拉菜单的填充、事件监听器的绑定以及模式切换逻辑。
- * @returns {void}
- */
-function initTranslation() {
-  const translationModeBtn = document.getElementById('translation-mode-button');
-  const chatModeBtn = document.getElementById('chat-mode-button');
-  const translationContainer = document.querySelector('.translation-container');
-  const chatContainer = document.querySelector('.chat-container.text-mode'); // 确保是文字聊天容器
-  const logContainer = document.querySelector('.chat-container.log-mode'); // 获取日志容器
-  const inputArea = document.querySelector('.input-area'); // 获取输入区域
-  
-  // 语言列表从 CONFIG 中获取
-  const languages = CONFIG.TRANSLATION.LANGUAGES;
-  
-  // 初始化语言下拉菜单
-  const inputLangSelect = document.getElementById('translation-input-language-select');
-  const outputLangSelect = document.getElementById('translation-output-language-select');
-  
-  languages.forEach(lang => {
-    const inputOption = document.createElement('option');
-    inputOption.value = lang.code;
-    inputOption.textContent = lang.name;
-    inputLangSelect.appendChild(inputOption);
-    
-    // 输出语言不包括"自动检测"
-    if (lang.code !== 'auto') {
-      const outputOption = document.createElement('option');
-      outputOption.value = lang.code;
-      outputOption.textContent = lang.name;
-      outputLangSelect.appendChild(outputOption);
-    }
-  });
-  
-  // 设置默认语言从 CONFIG 中获取
-  inputLangSelect.value = CONFIG.TRANSLATION.DEFAULT_INPUT_LANG;
-  outputLangSelect.value = CONFIG.TRANSLATION.DEFAULT_OUTPUT_LANG;
-
-  // 填充翻译模型选择下拉菜单
-  const translationModelSelect = document.getElementById('translation-model-select');
-  translationModelSelect.innerHTML = ''; // 清空现有选项
-  CONFIG.TRANSLATION.MODELS.forEach(model => {
-    const option = document.createElement('option');
-    option.value = model.name;
-    option.textContent = model.displayName;
-    if (model.name === CONFIG.TRANSLATION.DEFAULT_MODEL) {
-      option.selected = true;
-    }
-    translationModelSelect.appendChild(option);
-  });
-  
-  // 翻译按钮事件
-  document.getElementById('translate-button').addEventListener('click', handleTranslation);
-  
-  // 复制按钮事件
-  document.getElementById('translation-copy-button').addEventListener('click', () => {
-    const outputText = document.getElementById('translation-output-text').textContent;
-    navigator.clipboard.writeText(outputText).then(() => {
-      logMessage('翻译结果已复制', 'system');
-    }).catch(err => {
-      logMessage('复制失败: ' + err, 'system');
-    });
-  });
-  
-  // 模式切换事件
-  translationModeBtn.addEventListener('click', () => {
-    translationContainer.classList.add('active');
-    chatContainer.classList.remove('active');
-    if (visionContainer) visionContainer.classList.remove('active'); // 新增：隐藏视觉容器
-    logContainer.classList.remove('active'); // 隐藏日志容器
-    
-    // 隐藏聊天模式特有的元素
-    if (mediaPreviewsContainer) mediaPreviewsContainer.style.display = 'none';
-    if (inputArea) inputArea.style.display = 'none';
-
-    translationModeBtn.classList.add('active');
-    chatModeBtn.classList.remove('active');
-    if (visionModeBtn) visionModeBtn.classList.remove('active'); // 新增：取消视觉按钮激活
-    
-    // 确保停止所有媒体流
-    if (videoManager) stopVideo();
-    if (screenRecorder) stopScreenSharing();
-    // 翻译模式下显示语音输入按钮
-    if (translationVoiceInputButton) translationVoiceInputButton.style.display = 'inline-flex'; // 使用 inline-flex 保持 Material Symbols 的对齐
-    // 翻译模式下隐藏聊天语音输入按钮
-    if (chatVoiceInputButton) chatVoiceInputButton.style.display = 'none';
-  });
-  
-  chatModeBtn.addEventListener('click', () => {
-    translationContainer.classList.remove('active');
-    chatContainer.classList.add('active');
-    if (visionContainer) visionContainer.classList.remove('active'); // 新增：隐藏视觉容器
-    logContainer.classList.remove('active'); // 确保日志容器在聊天模式下也隐藏
-    
-    // 恢复聊天模式特有的元素显示
-    updateMediaPreviewsDisplay(); // 根据视频/屏幕共享状态更新媒体预览显示
-    if (inputArea) inputArea.style.display = 'flex'; // 恢复输入区域显示
-
-    translationModeBtn.classList.remove('active');
-    chatModeBtn.classList.add('active');
-    if (visionModeBtn) visionModeBtn.classList.remove('active'); // 新增：取消视觉按钮激活
-    // 聊天模式下隐藏翻译语音输入按钮
-    if (translationVoiceInputButton) translationVoiceInputButton.style.display = 'none';
-    // 聊天模式下显示聊天语音输入按钮
-    if (chatVoiceInputButton) chatVoiceInputButton.style.display = 'inline-flex';
-  });
-
-  // 确保日志按钮也能正确切换模式
-  document.getElementById('toggle-log').addEventListener('click', () => {
-    translationContainer.classList.remove('active');
-    chatContainer.classList.remove('active');
-    if (visionContainer) visionContainer.classList.remove('active'); // 新增：隐藏视觉容器
-    logContainer.classList.add('active');
-    
-    // 隐藏聊天模式特有的元素
-    if (mediaPreviewsContainer) mediaPreviewsContainer.style.display = 'none';
-    if (inputArea) inputArea.style.display = 'none';
-
-    translationModeBtn.classList.remove('active');
-    chatModeBtn.classList.remove('active'); // 确保聊天按钮也取消激活
-    if (visionModeBtn) visionModeBtn.classList.remove('active'); // 新增：取消视觉按钮激活
-    // 媒体流停止
-    if (videoManager) stopVideo();
-    if (screenRecorder) stopScreenSharing();
-
-    // 日志模式下隐藏语音输入按钮
-    if (translationVoiceInputButton) translationVoiceInputButton.style.display = 'none';
-    // 日志模式下隐藏聊天语音输入按钮
-    if (chatVoiceInputButton) chatVoiceInputButton.style.display = 'none';
-  });
-
-  // 新增：视觉模式切换事件
-  if (visionModeBtn) {
-    visionModeBtn.addEventListener('click', () => {
-      if (visionContainer) visionContainer.classList.add('active');
-      translationContainer.classList.remove('active');
-      chatContainer.classList.remove('active');
-      logContainer.classList.remove('active');
-
-      // 隐藏其他模式的特定UI
-      if (mediaPreviewsContainer) mediaPreviewsContainer.style.display = 'none';
-      if (inputArea) inputArea.style.display = 'none';
-      if (translationVoiceInputButton) translationVoiceInputButton.style.display = 'none';
-      if (chatVoiceInputButton) chatVoiceInputButton.style.display = 'none';
-
-      visionModeBtn.classList.add('active');
-      translationModeBtn.classList.remove('active');
-      chatModeBtn.classList.remove('active');
-
-      // 确保停止所有媒体流
-      if (videoManager) stopVideo();
-      if (screenRecorder) stopScreenSharing();
-    });
-  }
-
-  // 翻译模式语音输入按钮事件监听
-  if (translationVoiceInputButton) {
-    // 鼠标事件
-    translationVoiceInputButton.addEventListener('mousedown', startTranslationRecording);
-    translationVoiceInputButton.addEventListener('mouseup', stopTranslationRecording);
-    translationVoiceInputButton.addEventListener('mouseleave', (e) => {
-      // 如果鼠标在按住时移出按钮区域，也视为取消
-      if (isTranslationRecording) {
-        cancelTranslationRecording();
-      }
-    });
-
-    // 触摸事件
-    translationVoiceInputButton.addEventListener('touchstart', (e) => {
-      e.preventDefault(); // 阻止默认的触摸行为，如滚动
-      initialTouchY = e.touches[0].clientY; // 记录初始Y坐标
-      startTranslationRecording();
-    });
-    translationVoiceInputButton.addEventListener('touchend', (e) => {
-      e.preventDefault();
-      stopTranslationRecording();
-    });
-    translationVoiceInputButton.addEventListener('touchmove', (e) => {
-      if (isTranslationRecording) {
-        const currentTouchY = e.touches[0].clientY;
-        // 如果手指上滑超过一定距离，视为取消
-        if (initialTouchY - currentTouchY > 50) { // 50px 阈值
-          cancelTranslationRecording();
-        }
-      }
-    });
-  }
-
-  // 聊天模式语音输入按钮事件监听
-  if (chatVoiceInputButton) {
-    // 鼠标事件
-    chatVoiceInputButton.addEventListener('mousedown', startChatRecording);
-    chatVoiceInputButton.addEventListener('mouseup', stopChatRecording);
-    chatVoiceInputButton.addEventListener('mouseleave', (e) => {
-      // 如果鼠标在按住时移出按钮区域，也视为取消
-      if (isChatRecording) {
-        cancelChatRecording();
-      }
-    });
-
-    // 触摸事件
-    chatVoiceInputButton.addEventListener('touchstart', (e) => {
-      e.preventDefault(); // 阻止默认的触摸行为，如滚动
-      chatInitialTouchY = e.touches[0].clientY; // 记录初始Y坐标
-      startChatRecording();
-    });
-    chatVoiceInputButton.addEventListener('touchend', (e) => {
-      e.preventDefault();
-      stopChatRecording();
-    });
-    chatVoiceInputButton.addEventListener('touchmove', (e) => {
-      if (isChatRecording) {
-        const currentTouchY = e.touches[0].clientY;
-        // 如果手指上滑超过一定距离，视为取消
-        if (chatInitialTouchY - currentTouchY > 50) { // 50px 阈值
-          cancelChatRecording();
-        }
-      }
-    });
-  }
-
-  // 监听 Esc 键取消录音
-  document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape' && isTranslationRecording) {
-      cancelTranslationRecording();
-    } else if (e.key === 'Escape' && isChatRecording) { // 新增：聊天模式下按 Esc 取消录音
-      cancelChatRecording();
-    }
-  });
-
-  // 初始设置聊天模式下语音输入按钮的显示状态
-  // 默认激活文字聊天模式，所以这里应该显示
-  if (chatVoiceInputButton) {
-    // 检查当前激活的模式，如果不是聊天模式，则隐藏
-    const currentActiveModeTab = document.querySelector('.mode-tabs .tab.active');
-    if (currentActiveModeTab && currentActiveModeTab.dataset.mode === 'text') {
-      chatVoiceInputButton.style.display = 'inline-flex';
-    } else {
-      chatVoiceInputButton.style.display = 'none';
-    }
-  }
-} // 闭合 initTranslation 函数
-
-/**
- * @function startTranslationRecording
- * @description 开始翻译模式下的语音录音。
- * @returns {Promise<void>}
- */
-async function startTranslationRecording() {
-  if (isTranslationRecording) return;
-
-  // 首次点击，只请求权限
-  if (!hasRequestedTranslationMicPermission) {
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      // 成功获取权限后，立即停止流，因为我们只是为了请求权限
-      stream.getTracks().forEach(track => track.stop());
-      hasRequestedTranslationMicPermission = true;
-      logMessage('已请求并获取麦克风权限。请再次点击开始录音。', 'system');
-      translationVoiceInputButton.textContent = '点击开始录音'; // 提示用户再次点击
-      // 不开始录音，直接返回
-      return;
-    } catch (error) {
-      logMessage(`获取麦克风权限失败: ${error.message}`, 'system');
-      console.error('获取麦克风权限失败:', error);
-      alert('无法访问麦克风。请确保已授予麦克风权限。');
-      resetTranslationRecordingState(); // 权限失败时重置所有状态
-      hasRequestedTranslationMicPermission = false; // 确保权限请求状态也重置
-      return;
-    }
-  }
-
-  // 权限已请求过，现在开始录音
-  try {
-    logMessage('开始录音...', 'system');
-    translationVoiceInputButton.classList.add('recording-active'); // 添加录音激活类
-    translationInputTextarea.placeholder = '正在录音，请说话...';
-    translationInputTextarea.value = ''; // 清空输入区
-
-    translationAudioChunks = []; // 清空之前的音频数据
-    translationAudioRecorder = new AudioRecorder(); // 创建新的 AudioRecorder 实例
-
-    await translationAudioRecorder.start((chunk) => {
-      // AudioRecorder 现在应该返回 ArrayBuffer 或 Uint8Array
-      translationAudioChunks.push(chunk);
-    }, { returnRaw: true }); // 传递选项，让 AudioRecorder 返回原始 ArrayBuffer
-
-    isTranslationRecording = true;
-    translationVoiceInputButton.textContent = '录音中...'; // 更新按钮文本
-
-    // 设置一个超时，防止用户忘记松开按钮
-    recordingTimeout = setTimeout(() => {
-      if (isTranslationRecording) {
-        logMessage('录音超时，自动停止并发送', 'system');
-        stopTranslationRecording();
-      }
-    }, 60 * 1000); // 最长录音 60 秒
-
-  } catch (error) {
-    logMessage(`启动录音失败: ${error.message}`, 'system');
-    console.error('启动录音失败:', error);
-    alert('无法访问麦克风。请确保已授予麦克风权限。');
-    resetTranslationRecordingState(); // 录音失败时重置所有状态
-    hasRequestedTranslationMicPermission = false; // 确保权限请求状态也重置
-  }
-}
-
-/**
- * @function stopTranslationRecording
- * @description 停止翻译模式下的语音录音并发送进行转文字。
- * @returns {Promise<void>}
- */
-async function stopTranslationRecording() {
-  if (!isTranslationRecording) return;
-
-  clearTimeout(recordingTimeout); // 清除超时定时器
-  logMessage('停止录音，正在转文字...', 'system');
-  translationVoiceInputButton.classList.remove('recording-active'); // 移除录音激活类
-  translationInputTextarea.placeholder = '正在处理语音...';
-
-  try {
-    if (translationAudioRecorder) {
-      translationAudioRecorder.stop(); // 停止录音
-      translationAudioRecorder = null;
-    }
-
-    if (translationAudioChunks.length === 0) {
-      logMessage('没有录到音频，请重试', 'system');
-      resetTranslationRecordingState();
-      return;
-    }
-
-    // 将所有音频块合并成一个 Uint8Array
-    const totalLength = translationAudioChunks.reduce((acc, chunk) => acc + chunk.byteLength, 0);
-    const mergedAudioData = new Uint8Array(totalLength);
-    let offset = 0;
-    for (const chunk of translationAudioChunks) {
-      mergedAudioData.set(new Uint8Array(chunk), offset);
-      offset += chunk.byteLength;
-    }
-    translationAudioChunks = []; // 清空缓冲区
-
-    // 将合并后的原始音频数据转换为 WAV Blob
-    const audioBlob = pcmToWavBlob([mergedAudioData], CONFIG.AUDIO.INPUT_SAMPLE_RATE); // 使用 pcmToWavBlob 函数
-
-    // 发送转文字请求到 Worker
-    const response = await fetch('/api/transcribe-audio', {
-      method: 'POST',
-      headers: {
-        'Content-Type': audioBlob.type, // 使用 Blob 的 MIME 类型
-      },
-      body: audioBlob,
-    });
-
-    if (!response.ok) {
-      const errorData = await response.json();
-      throw new Error(`转文字失败: ${errorData.error || response.statusText}`);
-    }
-
-    const result = await response.json();
-    const transcriptionText = result.text || '未获取到转录文本。';
-
-    translationInputTextarea.value = transcriptionText; // 打印到输入区
-    logMessage('语音转文字成功', 'system');
-
-  } catch (error) {
-    logMessage(`语音转文字失败: ${error.message}`, 'system');
-    console.error('语音转文字失败:', error);
-    translationInputTextarea.placeholder = '语音转文字失败，请重试。';
-  } finally {
-    resetTranslationRecordingState();
-    hasRequestedTranslationMicPermission = false; // 录音停止后，重置权限请求状态
-  }
-}
-
-/**
- * @function cancelTranslationRecording
- * @description 取消翻译模式下的语音录音。
- * @returns {void}
- */
-function cancelTranslationRecording() {
-  if (!isTranslationRecording) return;
-
-  clearTimeout(recordingTimeout); // 清除超时定时器
-  logMessage('录音已取消', 'system');
-  
-  if (translationAudioRecorder) {
-    translationAudioRecorder.stop(); // 停止录音
-    translationAudioRecorder = null;
-  }
-  translationAudioChunks = []; // 清空音频数据
-  resetTranslationRecordingState();
-  translationInputTextarea.placeholder = '输入要翻译的内容...';
-  hasRequestedTranslationMicPermission = false; // 录音取消后，重置权限请求状态
 }
 
 /**
@@ -2493,8 +2881,7 @@ async function startChatRecording() {
   try {
     showToast('录音已开始...');
     chatVoiceInputButton.classList.add('recording'); // 使用新的 CSS 类
-    messageInput.placeholder = '正在录音，请说话...';
-    messageInput.value = '';
+    chatUI.logMessage('开始录音...', 'system');
 
     chatAudioChunks = [];
     chatAudioRecorder = new AudioRecorder();
@@ -2538,7 +2925,7 @@ async function stopChatRecording() {
     }
 
     if (chatAudioChunks.length === 0) {
-      showSystemMessage('没有录到音频，请重试');
+      showToast('没有录到音频，请重试');
       resetChatRecordingState();
       return;
     }
@@ -2569,14 +2956,16 @@ async function stopChatRecording() {
     const transcriptionText = result.text;
 
     if (transcriptionText) {
-        messageInput.value = transcriptionText;
+        messageInput.value += transcriptionText;
         showToast('语音转文字成功');
+        chatUI.logMessage(`语音转文字成功: ${transcriptionText}`, 'system'); // 添加日志
     } else {
-        showSystemMessage('未获取到转录文本。');
+        showToast('未获取到转录文本。');
+        chatUI.logMessage('未获取到转录文本。', 'system'); // 添加日志
     }
 
   } catch (error) {
-    showSystemMessage(`语音转文字失败: ${error.message}`);
+    showToast(`语音转文字失败: ${error.message}`);
     console.error('语音转文字失败:', error);
   } finally {
     resetChatRecordingState();
@@ -2613,93 +3002,6 @@ function resetChatRecordingState() {
   isChatRecording = false;
   chatVoiceInputButton.classList.remove('recording');
   messageInput.placeholder = '输入消息...';
-}
-
-/**
- * @function resetTranslationRecordingState
- * @description 重置翻译模式录音相关的状态。
- * @returns {void}
- */
-function resetTranslationRecordingState() {
-  isTranslationRecording = false;
-  translationVoiceInputButton.classList.remove('recording-active'); // 移除录音激活类
-  translationVoiceInputButton.textContent = '语音输入'; // 恢复按钮文本
-}
-
-/**
- * @function handleTranslation
- * @description 处理翻译请求，获取输入内容、语言和模型，向后端发送翻译请求，并显示翻译结果。
- * @returns {Promise<void>}
- */
-async function handleTranslation() {
-  const inputText = document.getElementById('translation-input-text').value.trim();
-  if (!inputText) {
-    logMessage('请输入要翻译的内容', 'system');
-    return;
-  }
-  
-  const inputLang = document.getElementById('translation-input-language-select').value;
-  const outputLang = document.getElementById('translation-output-language-select').value;
-  const model = document.getElementById('translation-model-select').value;
-  
-  const outputElement = document.getElementById('translation-output-text');
-  outputElement.textContent = '翻译中...';
-  
-  try {
-    // 构建提示词
-    const prompt = inputLang === 'auto' ?
-      `你是一个专业的翻译助手，请将以下内容翻译成${getLanguageName(outputLang)}：\n\n${inputText}` :
-      `你是一个专业的翻译助手，请将以下内容从${getLanguageName(inputLang)}翻译成${getLanguageName(outputLang)}：\n\n${inputText}`;
-    
-    const response = await fetch('/api/translate', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        // Authorization 头部由后端 worker.js 在 handleTranslationRequest 中处理
-      },
-      body: JSON.stringify({
-        model: model,
-        messages: [
-            {
-                role: 'system',
-                content: systemInstructionInput.value
-                    .replace(/\{\{to\}\}/g, getLanguageName(outputLang))
-                    .replace(/\{\{title_prompt\}\}/g, '') // 暂时替换为空字符串
-                    .replace(/\{\{summary_prompt\}\}/g, '') // 暂时替换为空字符串
-                    .replace(/\{\{terms_prompt\}\}/g, '') // 暂时替换为空字符串
-            },
-            { role: 'user', content: prompt }
-        ],
-        stream: false // 翻译通常不需要流式响应
-      })
-    });
-    
-    if (!response.ok) {
-      const errorData = await response.json();
-      throw new Error(`翻译请求失败: ${response.status} - ${errorData.error?.message || JSON.stringify(errorData)}`);
-    }
-    
-    const data = await response.json();
-    const translatedText = data.choices[0].message.content;
-    
-    outputElement.textContent = translatedText;
-    logMessage('翻译完成', 'system');
-  } catch (error) {
-    logMessage(`翻译失败: ${error.message}`, 'system');
-    outputElement.textContent = '翻译失败，请重试';
-    console.error('翻译错误:', error);
-  }
-}
-
-/**
- * @function getLanguageName
- * @description 根据语言代码获取语言的中文名称。
- * @param {string} code - 语言代码（如 'en', 'zh', 'auto'）。
- * @returns {string} 语言的中文名称或原始代码（如果未找到）。
- */
-function getLanguageName(code) {
-  const language = CONFIG.TRANSLATION.LANGUAGES.find(lang => lang.code === code);
-  return language ? language.name : code;
 }
 
 /**
@@ -2746,418 +3048,193 @@ export function showSystemMessage(message) {
 
     messageDiv.appendChild(contentDiv);
     messageHistory.appendChild(messageDiv);
-    scrollToBottom();
+    chatUI.scrollToBottom();
 }
 
-/**
- * ----------------------------------------------------------------
- * 附件处理相关函数
- * ----------------------------------------------------------------
- */
-
-async function handleFileAttachment(event, mode = 'chat') {
-    const files = event.target.files;
-    if (!files || files.length === 0) return;
-
-    const previewsContainer = mode === 'vision' ? visionAttachmentPreviews : fileAttachmentPreviews;
-    const fileList = mode === 'vision' ? visionAttachedFiles : [attachedFile]; // a bit of a hack for single vs multi file
-
-    for (const file of files) {
-        // 检查文件类型和大小
-        const allowedTypes = ['image/jpeg', 'image/png', 'image/webp', 'application/pdf', 'video/mp4', 'video/quicktime', 'video/x-msvideo', 'video/x-flv', 'video/webm'];
-        if (!allowedTypes.includes(file.type) && !file.type.startsWith('image/') && !file.type.startsWith('video/')) {
-            showSystemMessage(`不支持的文件类型: ${file.type}。`);
-            continue;
-        }
-        if (file.size > 20 * 1024 * 1024) { // 20MB 大小限制
-            showSystemMessage('文件大小不能超过 20MB。');
-            continue;
-        }
-
-        try {
-            const base64String = await new Promise((resolve, reject) => {
-                const reader = new FileReader();
-                reader.onload = () => resolve(reader.result);
-                reader.onerror = error => reject(error);
-                reader.readAsDataURL(file);
-            });
-
-            const fileData = {
-                name: file.name,
-                type: file.type,
-                base64: base64String
-            };
-
-            if (mode === 'vision') {
-                visionAttachedFiles.push(fileData);
-                displayFilePreview({
-                    type: file.type.startsWith('image/') ? 'image' : 'video',
-                    src: base64String,
-                    name: file.name,
-                    mode: 'vision',
-                    index: visionAttachedFiles.length - 1
-                });
-            } else {
-                // Chat mode currently only supports one attachment
-                clearAttachedFile(); // Clear previous before adding new one
-                attachedFile = fileData;
-                displayFilePreview({
-                    type: file.type.startsWith('image/') ? 'image' : 'pdf',
-                    src: base64String,
-                    name: file.name,
-                    mode: 'chat'
-                });
-            }
-            showToast(`文件已附加: ${file.name}`);
-
-        } catch (error) {
-            console.error('处理文件时出错:', error);
-            showSystemMessage(`处理文件失败: ${error.message}`);
-        }
-    }
-
-    // 重置 file input 以便可以再次选择同一个文件
-    event.target.value = '';
-}
-
-/**
- * @function displayFilePreview
- * @description 在预览区域显示选定文件的预览。
- * @param {object} options - 预览选项。
- * @param {string} options.type - 预览类型 ('image' 或 'canvas')。
- * @param {string} [options.src] - 图像的 Base64 数据 URL (如果 type 是 'image')。
- * @param {HTMLCanvasElement} [options.canvas] - Canvas 元素 (如果 type 是 'canvas')。
- * @param {string} options.name - 文件名。
- */
-function displayFilePreview({ type, src, name, mode, index }) {
-    const container = mode === 'vision' ? visionAttachmentPreviews : fileAttachmentPreviews;
+// 新增：文件上传事件监听
+window.addEventListener('file-uploaded', (event) => {
+    const { filename, container_path, session_id, file_size } = event.detail;
     
-    // Clear previous preview in chat mode
-    if (mode === 'chat') {
-        container.innerHTML = '';
-    }
+    // 创建系统消息通知模型
+    const systemMessage = `文件 "${filename}" 已上传到会话工作区。在代码解释器中可以通过路径 "${container_path}" 访问该文件。`;
+    
+    // 添加到聊天历史
+    chatHistory.push({
+        role: 'system',
+        content: systemMessage
+    });
+    
+    // 显示系统消息
+    showSystemMessage(systemMessage);
+    
+    console.log(`📁 文件上传成功: ${filename} -> ${container_path} (${file_size} bytes)`);
+});
 
-    const previewCard = document.createElement('div');
-    previewCard.className = 'file-preview-card';
-    previewCard.title = name;
-    if (mode === 'vision') {
-        previewCard.dataset.index = index;
-    }
-
-    let previewElement;
-    if (type.startsWith('image')) {
-        previewElement = document.createElement('img');
-        previewElement.src = src;
-        previewElement.alt = name;
-    } else if (type.startsWith('video')) {
-        previewElement = document.createElement('video');
-        previewElement.src = src;
-        previewElement.alt = name;
-        previewElement.muted = true;
-        previewElement.autoplay = true;
-        previewElement.loop = true;
-        previewElement.playsInline = true;
-    } else { // PDF or other
-        previewElement = document.createElement('div');
-        previewElement.className = 'file-placeholder';
-        const icon = document.createElement('span');
-        icon.className = 'material-symbols-outlined';
-        icon.textContent = 'description'; // PDF icon
-        const text = document.createElement('p');
-        text.textContent = name;
-        previewElement.appendChild(icon);
-        previewElement.appendChild(text);
-    }
-
-
-    const closeButton = document.createElement('button');
-    closeButton.className = 'close-button material-symbols-outlined';
-    closeButton.textContent = 'close';
-    closeButton.onclick = (e) => {
-        e.stopPropagation();
-        if (mode === 'vision') {
-            removeVisionAttachment(index);
-        } else {
-            clearAttachedFile();
-        }
-    };
-
-    previewCard.appendChild(previewElement);
-    previewCard.appendChild(closeButton);
-    container.appendChild(previewCard);
-}
-
-/**
- * @function clearAttachedFile
- * @description 清除已附加的文件状态和预览。
- */
-function clearAttachedFile(mode = 'chat') {
-    if (mode === 'vision') {
-        visionAttachedFiles = [];
-        visionAttachmentPreviews.innerHTML = '';
-    } else {
-        attachedFile = null;
-        fileAttachmentPreviews.innerHTML = '';
-    }
-}
-
-
-
-
-function removeVisionAttachment(indexToRemove) {
-    visionAttachedFiles.splice(indexToRemove, 1);
-    // Re-render all previews to correctly update indices
-    visionAttachmentPreviews.innerHTML = '';
-    visionAttachedFiles.forEach((file, index) => {
-        displayFilePreview({
-            type: file.type,
-            src: file.base64,
-            name: file.name,
-            mode: 'vision',
-            index: index
+// 新增：会话清理函数
+async function cleanupSession(sessionId) {
+    if (!sessionId) return;
+    
+    try {
+        const response = await fetch(`/api/v1/sessions/${sessionId}`, {
+            method: 'DELETE'
         });
+        
+        if (response.ok) {
+            console.log(`✅ 会话 ${sessionId} 已清理`);
+        } else {
+            console.warn(`⚠️ 会话清理失败: ${sessionId}`);
+        }
+    } catch (error) {
+        console.error('❌ 会话清理错误:', error);
+    }
+}
+
+// 新增：页面卸载时清理会话
+window.addEventListener('beforeunload', () => {
+    if (currentSessionId) {
+        // 使用同步请求确保清理完成
+        fetch(`/api/v1/sessions/${currentSessionId}`, {
+            method: 'DELETE',
+            keepalive: true // 确保在页面卸载时请求能完成
+        }).catch(() => {
+            // 忽略错误，因为页面正在卸载
+        });
+    }
+});
+
+// 🚀 添加调试工具到控制台
+window.getAgentStatus = () => orchestrator?.getStatus();
+window.getToolStats = () => orchestrator?.getToolStatistics();
+window.toggleAgentMode = (enabled) => {
+    const toggle = document.getElementById('agent-mode-toggle');
+    if (toggle) {
+        toggle.checked = enabled;
+        toggle.dispatchEvent(new Event('change'));
+    }
+};
+
+// 🎯 新增：Agent系统状态调试函数
+function debugAgentSystem() {
+    console.log('🔍 Agent系统状态:', {
+        orchestrator: window.orchestrator ? {
+            isEnabled: orchestrator.isEnabled,
+            initState: orchestrator._initState,
+            isInitialized: orchestrator.isInitialized
+        } : '未创建',
+        agentThinkingDisplay: window.agentThinkingDisplay ? '已创建' : '未创建',
+        agentModeToggle: agentModeToggle ? {
+            checked: agentModeToggle.checked,
+            disabled: agentModeToggle.disabled
+        } : '未找到'
     });
 }
 
+// Debug helpers: allow manually inspecting/overriding audio sample rate from console
+window.setAudioSampleRate = (rate) => {
+    if (!audioStreamer) {
+        console.warn('audioStreamer 未初始化');
+        return;
+    }
+    audioStreamer.sampleRate = rate;
+    console.log('audioStreamer.sampleRate 已设置为', rate);
+};
 
-async function handleSendVisionMessage() {
-    const text = visionInputText.value.trim();
-    if (!text && visionAttachedFiles.length === 0) {
-        showToast('请输入文本或添加附件。');
+window.getAudioSampleRate = () => audioStreamer?.sampleRate || null;
+
+/**
+ * @function startAgentThinking
+ * @description 启动 Agent 思考显示，如果实例不存在则创建。
+ * @param {string} userMessage - 用户消息。
+ * @param {number} [maxIterations=8] - 最大迭代次数。
+ * @returns {Promise<string>} 会话 ID。
+ */
+export async function startAgentThinking(userMessage, maxIterations = 8) {
+    // 🎯 修复：由于已在 initializeEnhancedAgent 中提前创建，这里不再需要动态导入和创建
+    try {
+        if (!agentThinkingDisplay) {
+            // 降级处理：如果由于某种原因未创建，则动态导入
+            const { AgentThinkingDisplay } = await import('./agent/AgentThinkingDisplay.js');
+            agentThinkingDisplay = new AgentThinkingDisplay();
+        }
+        return agentThinkingDisplay.startSession(userMessage, maxIterations);
+    } catch (error) {
+        console.error('启动Agent思考显示失败:', error);
+        // 返回一个虚拟会话ID，避免阻塞主流程
+        return `agent_fallback_${Date.now()}`;
+    }
+}
+
+/**
+ * @function stopAgentThinking
+ * @description 停止 Agent 思考显示并隐藏。
+ * @param {boolean} [destroy=false] - 是否完全销毁实例。
+ * @returns {void}
+ */
+export function stopAgentThinking(destroy = false) {
+    if (agentThinkingDisplay) {
+        agentThinkingDisplay.hide();
+        if (destroy) {
+            // 确保 destroy 方法存在
+            if (typeof agentThinkingDisplay.destroy === 'function') {
+                agentThinkingDisplay.destroy();
+            }
+            agentThinkingDisplay = null;
+        }
+    }
+}
+
+/**
+ * @function getAgentThinkingDisplay
+ * @description 获取当前的Agent思考显示实例（用于调试或高级操作）。
+ * @returns {AgentThinkingDisplay|null}
+ */
+export function getAgentThinkingDisplay() {
+    return agentThinkingDisplay;
+}
+
+/**
+ * @function displayAgentSummary
+ * @description 新增：显示Agent执行摘要卡片，避免重复显示完整摘要。
+ * @param {Object} agentResult - Agent执行结果对象。
+ * @returns {void}
+ */
+function displayAgentSummary(agentResult) {
+    const summaryDiv = document.createElement('div');
+    summaryDiv.className = 'message assistant agent-execution-summary'; // 使用 message assistant 类以保持样式一致性
+    
+    // 确保 messageHistory 元素可用
+    const messageHistoryElement = document.getElementById('message-history');
+    if (!messageHistoryElement) {
+        console.error('messageHistory 元素未找到，无法显示 Agent 摘要。');
         return;
     }
 
-    const visionModelSelect = document.getElementById('vision-model-select');
-    const selectedModel = visionModelSelect.value;
-
-    // 显示用户消息
-    displayVisionUserMessage(text, visionAttachedFiles);
-
-    // 将用户消息添加到历史记录
-    const userContent = [];
-    if (text) {
-        userContent.push({ type: 'text', text });
-    }
-    visionAttachedFiles.forEach(file => {
-        userContent.push({ type: 'image_url', image_url: { url: file.base64 } });
-    });
-    visionChatHistory.push({ role: 'user', content: userContent });
-
-    // 清理输入
-    visionInputText.value = '';
-    clearAttachedFile('vision');
-
-    // 显示加载状态
-    visionSendButton.disabled = true;
-    visionSendButton.textContent = 'progress_activity';
-    const aiMessage = createVisionAIMessageElement();
-    const { markdownContainer, reasoningContainer } = aiMessage;
-    markdownContainer.innerHTML = '<p>正在请求模型...</p>';
-
-    try {
-        // 统一使用流式请求
-        const response = await fetch('/api/chat/completions', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                model: selectedModel,
-                messages: [
-                    { role: 'system', content: VISION_SYSTEM_PROMPT },
-                    ...visionChatHistory
-                ],
-                stream: true, // 始终启用流式响应
-            }),
-        });
-
-        if (!response.ok) {
-            const errorData = await response.json();
-            throw new Error(errorData.error?.message || 'API 请求失败');
-        }
-
-        const reader = response.body.getReader();
-        const decoder = new TextDecoder('utf-8');
-        let finalContent = ''; // 用于存储最终的 content 部分
-        let reasoningStarted = false;
-
-        markdownContainer.innerHTML = ''; // 清空 "加载中" 消息
-
-        while (true) {
-            const { done, value } = await reader.read();
-            if (done) break;
-
-            const chunk = decoder.decode(value, { stream: true });
-            chunk.split('\n\n').forEach(part => {
-                if (part.startsWith('data: ')) {
-                    const jsonStr = part.substring(6);
-                    if (jsonStr === '[DONE]') return;
-                    try {
-                        const data = JSON.parse(jsonStr);
-                        const delta = data.choices?.[0]?.delta;
-                        if (delta) {
-                            // 处理思维链内容
-                            if (delta.reasoning_content) {
-                                if (!reasoningStarted) {
-                                    reasoningContainer.style.display = 'block'; // 显示思维链容器
-                                    reasoningStarted = true;
-                                }
-                                // 使用 innerHTML 追加，以便渲染 Markdown 换行等
-                                reasoningContainer.querySelector('.reasoning-content').innerHTML += delta.reasoning_content.replace(/\n/g, '<br>');
-                            }
-                            // 处理主要内容
-                            if (delta.content) {
-                                finalContent += delta.content;
-                                markdownContainer.innerHTML = marked.parse(finalContent);
-                            }
-                        }
-                    } catch (e) {
-                        console.error('Error parsing SSE chunk:', e, jsonStr);
-                    }
-                }
-            });
-            visionMessageHistory.scrollTop = visionMessageHistory.scrollHeight;
-        }
-
-        // 流结束后，对最终内容进行一次 MathJax 排版
-        if (typeof MathJax !== 'undefined' && MathJax.startup) {
-            MathJax.startup.promise.then(() => {
-                MathJax.typeset([markdownContainer, reasoningContainer]);
-            }).catch((err) => console.error('MathJax typesetting failed:', err));
-        }
-        
-        // 将最终的 AI content（不包含思维链）添加到历史记录
-        visionChatHistory.push({ role: 'assistant', content: finalContent });
-
-    } catch (error) {
-        console.error('Error sending vision message:', error);
-        markdownContainer.innerHTML = `<p><strong>请求失败:</strong> ${error.message}</p>`;
-    } finally {
-        visionSendButton.disabled = false;
-        visionSendButton.textContent = 'send';
-    }
-}
-
-function displayVisionUserMessage(text, files) {
-    const messageDiv = document.createElement('div');
-    messageDiv.classList.add('message', 'user');
-
-    const avatarDiv = document.createElement('div');
-    avatarDiv.classList.add('avatar');
-    avatarDiv.textContent = '👤';
-
-    const contentDiv = document.createElement('div');
-    contentDiv.classList.add('content');
-
-    if (text) {
-        const textNode = document.createElement('p');
-        textNode.textContent = text;
-        contentDiv.appendChild(textNode);
-    }
-
-    if (files && files.length > 0) {
-        const attachmentsContainer = document.createElement('div');
-        attachmentsContainer.className = 'attachments-grid';
-        files.forEach(file => {
-            let attachmentElement;
-            if (file.type.startsWith('image/')) {
-                attachmentElement = document.createElement('img');
-                attachmentElement.src = file.base64;
-            } else if (file.type.startsWith('video/')) {
-                attachmentElement = document.createElement('video');
-                attachmentElement.src = file.base64;
-                attachmentElement.controls = true;
-            }
-            if (attachmentElement) {
-                attachmentElement.className = 'chat-attachment';
-                attachmentsContainer.appendChild(attachmentElement);
-            }
-        });
-        contentDiv.appendChild(attachmentsContainer);
-    }
-
-    messageDiv.appendChild(avatarDiv);
-    messageDiv.appendChild(contentDiv);
-    visionMessageHistory.appendChild(messageDiv);
-    visionMessageHistory.scrollTop = visionMessageHistory.scrollHeight;
-}
-
-function createVisionAIMessageElement() {
-    const messageDiv = document.createElement('div');
-    messageDiv.classList.add('message', 'ai');
-
-    const avatarDiv = document.createElement('div');
-    avatarDiv.classList.add('avatar');
-    avatarDiv.textContent = '🤖';
-
-    const contentDiv = document.createElement('div');
-    contentDiv.classList.add('content');
+    // 确保 intermediateSteps 是数组
+    const toolCount = agentResult.intermediateSteps?.length || 0;
+    const statusText = agentResult.success ? '✅ 成功' : '❌ 失败';
     
-    // 新增：思维链容器
-    const reasoningContainer = document.createElement('div');
-    reasoningContainer.className = 'reasoning-container';
-    reasoningContainer.style.display = 'none'; // 默认隐藏
-    const reasoningTitle = document.createElement('h4');
-    reasoningTitle.className = 'reasoning-title';
-    reasoningTitle.innerHTML = '<span class="material-symbols-outlined">psychology</span> 思维链';
-    const reasoningContent = document.createElement('div');
-    reasoningContent.className = 'reasoning-content';
-    reasoningContainer.appendChild(reasoningTitle);
-    reasoningContainer.appendChild(reasoningContent);
-    contentDiv.appendChild(reasoningContainer);
-
-    const markdownContainer = document.createElement('div');
-    markdownContainer.classList.add('markdown-container');
-    contentDiv.appendChild(markdownContainer);
+    summaryDiv.innerHTML = `
+        <div class="content">
+            <div class="summary-header">
+                <span class="summary-icon">📊</span>
+                <strong>Agent执行摘要</strong>
+            </div>
+            <div class="summary-details">
+                <span>模型: ${agentResult.model ? agentResult.model.replace('models/', '') : 'N/A'}</span>
+                <span>•</span>
+                <span>迭代: ${agentResult.iterations}次</span>
+                <span>•</span>
+                <span>工具: ${toolCount}个</span>
+                <span>•</span>
+                <span>状态: ${statusText}</span>
+            </div>
+            <div class="summary-note">
+                💡 详细执行过程已在聊天记录中显示
+            </div>
+        </div>
+    `;
     
-    const copyButton = document.createElement('button');
-    copyButton.classList.add('copy-button', 'material-symbols-outlined');
-    copyButton.textContent = 'content_copy';
-    copyButton.addEventListener('click', async () => {
-        try {
-            // 合并思维链和主要内容进行复制
-            const reasoningText = reasoningContainer.style.display !== 'none'
-                ? `[思维链]\n${reasoningContainer.querySelector('.reasoning-content').innerText}\n\n`
-                : '';
-            const mainText = markdownContainer.innerText;
-            await navigator.clipboard.writeText(reasoningText + mainText);
-            copyButton.textContent = 'check';
-            setTimeout(() => { copyButton.textContent = 'content_copy'; }, 2000);
-        } catch (err) {
-            console.error('Failed to copy text: ', err);
-        }
-    });
-
-    contentDiv.appendChild(copyButton);
-    
-    messageDiv.appendChild(avatarDiv);
-    messageDiv.appendChild(contentDiv);
-    visionMessageHistory.appendChild(messageDiv);
-    visionMessageHistory.scrollTop = visionMessageHistory.scrollHeight;
-    
-    return {
-        container: messageDiv,
-        markdownContainer,
-        reasoningContainer, // 返回思维链容器
-        contentDiv,
-    };
-}
-
-/**
- * @function initVision
- * @description 初始化视觉功能，主要是填充模型选择下拉菜单。
- * @returns {void}
- */
-function initVision() {
-    const visionModelSelect = document.getElementById('vision-model-select');
-    if (!visionModelSelect) return;
-
-    visionModelSelect.innerHTML = ''; // 清空现有选项
-    CONFIG.VISION.MODELS.forEach(model => {
-        const option = document.createElement('option');
-        option.value = model.name;
-        option.textContent = model.displayName;
-        if (model.name === CONFIG.VISION.DEFAULT_MODEL) {
-            option.selected = true;
-        }
-        visionModelSelect.appendChild(option);
-    });
+    // 添加到消息历史中
+    messageHistoryElement.appendChild(summaryDiv);
+    chatUI.scrollToBottom();
 }

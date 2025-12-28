@@ -3,12 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Gemini 2.0 Flash Multimodal Live API Client</title>
-    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0" />
-    <!-- 建议使用填充版本图标 -->
-    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@24,400,1,0" />
-    <!-- 新增：用于语音播放器图标 -->
-    <link rel="stylesheet" href="https://fonts.googleapis.com/icon?family=Material+Icons" />
+    <title>Gemini Chat Multimodal Live API Client</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" />
     <link rel="stylesheet" href="css/style.css">
     <!-- 引入 MathJax 用于数学公式渲染 -->
     <script type="text/javascript" id="MathJax-script" async
@@ -26,9 +22,11 @@
       };
     </script>
     <!-- 引入 marked.js 用于 Markdown 渲染 -->
-    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script src="lib/marked-lib/marked.umd.js"></script>
     <!-- 引入 highlight.js 用于代码高亮 -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.7.0/styles/github-dark-dimmed.min.css">
+    <!-- 新增工作流样式 -->
+    <link rel="stylesheet" href="css/workflow-ui.css">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.7.0/highlight.min.js"></script>
     <!-- 新增：引入 pdf.js -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.11.338/pdf.min.js"></script>
@@ -44,21 +42,25 @@
         <nav class="app-nav">
             <div class="mode-switcher">
                 <h1 class="app-title">Gemini Chat</h1>
-                <button id="translation-mode-button" class="mode-button material-symbols-outlined">translate</button>
-                <button id="chat-mode-button" class="mode-button material-symbols-outlined active">chat</button>
-                <button id="vision-mode-button" class="mode-button material-symbols-outlined">camera_enhance</button>
+                <button id="translation-mode-button" class="mode-button" title="Translate Mode"><i class="fa-solid fa-language"></i></button>
+                <button id="chat-mode-button" class="mode-button active" title="Chat Mode"><i class="fa-solid fa-comments"></i></button>
+                <button id="vision-mode-button" class="mode-button" title="Vision Mode"><i class="fas fa-chess-king"></i></button>
             </div>
             <div class="nav-tools">
-                <button id="new-chat-button" class="material-symbols-outlined">add_box</button>
-                <button id="toggle-config" class="material-symbols-outlined">settings</button>
-                <button id="toggle-log" class="material-symbols-outlined">description</button>
-                <button id="theme-toggle" class="material-symbols-outlined">light_mode</button>
+                <button id="new-chat-button" title="New Chat"><i class="fa-solid fa-square-plus"></i></button>
+                
+                <!-- 🎯 核心UI修改：将文件管理器按钮移动到此处 -->
+                <button id="file-manager-button" title="会话文件"><i class="fa-solid fa-folder-open"></i></button>
+
+                <button id="toggle-config" title="Settings"><i class="fa-solid fa-gear"></i></button>
+                <button id="toggle-log" title="System Log"><i class="fa-solid fa-file-lines"></i></button>
+                <button id="theme-toggle" class="mode-button" title="Toggle Theme"><i class="fa-solid fa-sun"></i></button>
 
             <!-- 移动媒体控制按钮到这里 -->
             <div class="media-controls">
-                <button id="mic-button" class="media-button material-symbols-outlined">mic</button>
-                <button id="camera-button" class="media-button material-symbols-outlined">videocam</button>
-                <button id="screen-button" class="media-button material-symbols-outlined">screen_share</button>
+                <button id="mic-button" class="media-button" title="Microphone"><i class="fa-solid fa-microphone"></i></button>
+                <button id="camera-button" class="media-button" title="Camera"><i class="fa-solid fa-video"></i></button>
+                <button id="screen-button" class="media-button" title="Screen Share"><i class="fa-solid fa-display"></i></button>
                 <!-- 移除翻转按钮 -->
                  </div>
             </div>
@@ -99,13 +101,33 @@
                             <option value="models/gemini-2.5-flash-preview-05-20" selected>gemini-2.5-flash-preview-05-20</option>
                         </select>
                     </div>
+                    <!-- 新增：Gemini 思维链开关 -->
+                    <div class="setting-item setting-item-horizontal">
+                        <label for="enable-reasoning-checkbox">Gemini 思维链:</label>
+                        <label class="switch" for="enable-reasoning-checkbox" title="启用后Gemini模型会显示思考过程">
+                            <input type="checkbox" id="enable-reasoning-checkbox" name="enableReasoning">
+                            <span class="slider round"></span>
+                        </label>
+                    </div>
+                    <!-- 新增：智能代理模式开关 -->
+                    <div class="setting-item setting-item-horizontal">
+                        <label for="agent-mode-toggle">智能代理模式:</label>
+                        <label class="switch" title="启用后自动规划和执行复杂任务">
+                            <input type="checkbox" id="agent-mode-toggle" checked>
+                            <span class="slider round"></span>
+                        </label>
+                    </div>
                     <div class="setting-item">
                         <label for="fps-input">视频 FPS:</label>
                         <input type="number" id="fps-input" placeholder="Video FPS" value="1" min="1" max="30" step="1"/>
                         <span class="fps-help">更高 FPS 需要更多网络带宽</span>
                     </div>
-                    <div class="setting-item full-width">
-                        <label for="system-instruction">系统指令:</label>
+                    <div class="setting-item">
+                        <label for="prompt-select">指令模式:</label>
+                        <select id="prompt-select"></select>
+                    </div>
+                    <div class="setting-item full-width" style="display: none;">
+                        <label for="system-instruction">系统指令 (隐藏):</label>
                         <textarea id="system-instruction" placeholder="Enter custom system instructions..." rows="6"></textarea>
                     </div>
                     <div class="button-group">
@@ -122,6 +144,7 @@
                     <button class="tab active" data-mode="text">📝 文字聊天</button>
                     <!-- <button class="tab" data-mode="audio">🎙️ 音频聊天</button> 删除此行 -->
                     <button class="tab" data-mode="log">📋 系统日志</button>
+                    <button class="tab" data-mode="history">📜 历史记录</button>
                 </div>
 
                 <section class="chat-container text-mode active">
@@ -129,16 +152,19 @@
                     <div id="video-container" class="media-preview">
                       <video id="preview" playsinline webkit-playsinline autoplay muted></video>
                       <div class="video-controls">
-                        <button id="flip-camera" class="media-button material-symbols-outlined">flip_camera_ios</button>
-                        <button id="stop-video" class="close-button material-symbols-outlined">close</button>
+                        <button id="flip-camera" class="media-button" title="Flip Camera"><i class="fa-solid fa-camera-rotate"></i></button>
+                        <button id="stop-video" class="close-button" title="Stop Video"><i class="fa-solid fa-xmark"></i></button>
                       </div>
                     </div>
                     <div id="screen-preview-container" class="media-preview">
                       <video id="screen-preview-element" playsinline webkit-playsinline autoplay muted></video>
-                      <button id="stop-screen-button" class="close-button material-symbols-outlined">close</button>
+                      <button id="stop-screen-button" class="close-button" title="Stop Screen Share"><i class="fa-solid fa-xmark"></i></button>
                     </div>
                   </div>
                   
+                  <!-- 🚀 新增：工作流容器 -->
+                  <div id="workflow-container" class="workflow-container"></div>
+
                   <div class="message-history" id="message-history">
                     <!-- 聊天消息动态插入 -->
                   </div>
@@ -152,13 +178,15 @@
 
                     <div class="input-area">
                         <textarea id="message-input" placeholder="输入消息..." rows="1"></textarea>
-                        <button id="send-button" class="send-button material-symbols-outlined">send</button>
-                        <button id="interrupt-button" class="action-button">||</button>
+                        <button id="send-button" class="send-button" title="Send"><i class="fa-solid fa-paper-plane"></i></button>
+                        <button id="interrupt-button" class="action-button" title="Interrupt">||</button>
                         <!-- 新增：附件按钮 -->
-                        <button id="attachment-button" class="action-button material-symbols-outlined">attach_file</button>
+                        <button id="attachment-button" class="action-button" title="Attach File"><i class="fa-solid fa-paperclip"></i></button>
                         <!-- 新增：聊天模式下的语音输入按钮 -->
-                        <button id="chat-voice-input-button" class="action-button material-symbols-outlined">mic</button>
-                        <input type="file" id="file-input" accept="image/jpeg,image/png,image/webp,application/pdf" style="display: none;">
+                        <button id="chat-voice-input-button" class="action-button" title="Voice Input"><i class="fa-solid fa-microphone"></i></button>
+                        <input type="file" id="file-input"
+       accept="image/*, application/pdf, video/*, audio/*, .xlsx,.xls,.parquet,.csv,.json,.txt"
+       multiple style="display: none;">
                     </div>
                     
                 </section>
@@ -174,6 +202,31 @@
                     </div>
                 </section>
 
+                <!-- 历史记录区 -->
+                <section class="chat-container history-mode">
+                    <div class="log-header">
+                        <h3>历史记录</h3>
+                        <div class="history-controls">
+                            <label for="history-enabled-switch" class="switch" title="启用/禁用历史记录">
+                                <input type="checkbox" id="history-enabled-switch" checked aria-label="启用/禁用历史记录">
+                                <span class="slider round"></span>
+                            </label>
+                            <button id="restore-history-btn" class="icon-button" title="从云端恢复历史记录">
+                                <i class="fas fa-sync-alt"></i>
+                            </button>
+                            <button id="batch-select-history-btn" class="icon-button" title="批量选择">
+                               <i class="fas fa-check-square"></i>
+                            </button>
+                            <button id="delete-selected-history-btn" class="icon-button danger" title="删除所选" style="display: none;">
+                               <i class="fas fa-trash-alt"></i>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="history-list" id="history-list-container">
+                        <!-- 历史记录列表将动态插入此处 -->
+                    </div>
+                </section>
+
                 <!-- 翻译功能区 -->
                 <section class="translation-container">
                     <div class="translation-input-area">
@@ -186,6 +239,8 @@
                         </div>
                         <textarea id="translation-input-text" placeholder="输入要翻译的内容..." rows="10"></textarea>
                         <div class="translation-action-buttons">
+                            <button id="translation-ocr-button" class="action-button" style="display: none;" title="OCR Translate"><i class="fa-solid fa-image"></i></button>
+                            <input type="file" id="translation-ocr-input" accept="image/*" capture="environment" style="display: none;">
                             <button id="translate-button" class="action-button">翻译</button>
                             <!-- 新增：翻译模式下的语音输入按钮 -->
                             <button id="translation-voice-input-button" class="action-button">语音输入</button>
@@ -196,37 +251,125 @@
                             <select id="translation-output-language-select" title="选择输出语言"></select>
                         </div>
                         <div id="translation-output-text" class="translation-output-display"></div>
-                        <button id="translation-copy-button" class="copy-button material-symbols-outlined">content_copy</button>
+                        <button id="translation-copy-button" class="copy-button" title="Copy"><i class="fa-solid fa-copy"></i></button>
                     </div>
                 </section>
 
-                <!-- 视觉模型功能区 -->
                 <section class="vision-container">
-                    <!-- Replicate the structure of the main chat container -->
+                  <!-- 视觉聊天全屏模式 -->
+                  <div class="vision-chat-fullscreen active" id="vision-chat-fullscreen">
                     <div class="message-history" id="vision-message-history">
-                        <!-- Vision chat messages will be dynamically inserted here -->
+                      <!-- Vision chat messages will be dynamically inserted here -->
                     </div>
 
                     <div class="file-attachment-previews" id="vision-attachment-previews">
-                        <!-- Attachment previews for vision mode will be dynamically inserted here -->
+                      <!-- Attachment previews for vision mode will be dynamically inserted here -->
                     </div>
 
                     <div class="vision-controls">
+                      <div class="vision-control-row">
                         <label for="vision-model-select">模型:</label>
                         <select id="vision-model-select"></select>
+                      </div>
+                      <div class="vision-control-row">
+                        <label for="vision-prompt-select">模式:</label>
+                        <select id="vision-prompt-select"></select>
+                        <button id="vision-summary-button" class="action-button" title="生成对局总结">对局总结</button>
+                        <button id="toggle-to-chess-button" class="action-button" title="切换到国际象棋棋盘">切换到棋盘</button>
+                      </div>
                     </div>
+                    
                     <div class="input-area" id="vision-input-area">
-                        <textarea id="vision-input-text" placeholder="输入描述或问题..." rows="1"></textarea>
-                        <button id="vision-attachment-button" class="action-button material-symbols-outlined">attach_file</button>
-                        <input type="file" id="vision-file-input" accept="image/*,video/*,application/pdf" style="display: none;" multiple>
-                        <button id="vision-send-button" class="send-button material-symbols-outlined">send</button>
+                      <textarea id="vision-input-text" placeholder="输入描述或问题..." rows="1"></textarea>
+                      <button id="vision-attachment-button" class="action-button" title="Attach File"><i class="fa-solid fa-paperclip"></i></button>
+                      <input type="file" id="vision-file-input"
+       accept=".xlsx,.xls,.parquet,.csv,.json,.txt,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,image/*,video/*,audio/*,application/pdf"
+       multiple style="display: none;">
+                      <button id="vision-send-button" class="send-button" title="Send"><i class="fa-solid fa-paper-plane"></i></button>
                     </div>
+                  </div>
+
+                  <!-- 棋盘全屏模式 -->
+                  <div class="chess-fullscreen" id="chess-fullscreen">
+                    <div class="chess-content-wrapper">
+                      <div class="chess-board-area">
+                        <!-- 棋盘容器应该在这里 -->
+                        <div id="chess-board" class="chess-board"></div>
+                        
+                        <!-- 信息面板 -->
+                        <div class="chess-info-panel">
+                            <h3>国际象棋棋盘</h3>
+                            <div class="fen-display">
+                                <label for="fen-output">当前FEN:</label>
+                                <textarea id="fen-output" class="fen-text" readonly></textarea>
+                                <div class="fen-actions">
+                                    <button id="copy-fen-button" class="action-button">复制FEN</button>
+                                    <button id="reset-chess-button" class="action-button">新游戏</button>
+                                    <button id="undo-move-button" class="action-button">上一步</button>
+                                </div>
+                            </div>
+                        </div>
+                      </div>
+                    </div>
+                    <!-- 全屏模式下的控制按钮 -->
+                    <div class="fullscreen-controls">
+                      <button id="toggle-to-vision-button" class="action-button">切换到聊天</button>
+                    </div>
+                  </div>
                 </section>
 
             </div>
         </div>
 
     </div>
+
+    <!-- Image Modal Structure -->
+    <div id="image-modal" class="modal">
+        <div class="modal-content">
+            <span class="close-button" id="close-image-modal">&times;</span>
+            <h2 class="modal-title" id="modal-image-title">图片详情</h2>
+            <div class="modal-image-container">
+                <img id="modal-image-display" src="" alt="图片详情">
+            </div>
+            <div class="modal-info">
+                <p><i class="fa-solid fa-info-circle"></i> **标题:** <span id="modal-image-info-title">N/A</span></p>
+                <p><i class="fa-solid fa-maximize"></i> **尺寸:** <span id="modal-image-info-dimensions">N/A</span></p>
+                <p><i class="fa-solid fa-weight-hanging"></i> **大小:** <span id="modal-image-info-size">N/A</span></p>
+                <p><i class="fa-solid fa-file-image"></i> **类型:** <span id="modal-image-info-type">N/A</span></p>
+                <p><i class="fa-solid fa-link"></i> **原始链接:** <a id="modal-image-info-url" href="#" target="_blank" rel="noopener noreferrer">N/A</a></p>
+            </div>
+            <div class="modal-actions">
+                <button class="action-button copy-button" id="copy-image-url-button" title="Copy Image URL"><i class="fa-solid fa-copy"></i> 复制链接</button>
+                <a id="download-image-button" class="action-button primary-button" download title="Download Image">
+                    <i class="fa-solid fa-download"></i> 下载图片
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <!-- 🎯 核心UI升级：浮窗式文件管理器 (默认隐藏) -->
+    <div id="file-manager-modal" class="file-manager-modal">
+        <div class="file-manager-content">
+            <div class="fm-header">
+                <h2>会话文件管理器</h2>
+                <button id="close-file-manager" class="fm-close-btn">&times;</button>
+            </div>
+            <div class="fm-search-container">
+                <input type="text" id="file-manager-search" placeholder="搜索文件名..." />
+            </div>
+            <div id="file-list-container" class="fm-list-container">
+                <!-- 文件列表将动态插入此处 -->
+            </div>
+            <div class="fm-footer">
+                <button id="refresh-file-list" class="fm-btn fm-btn-secondary">
+                    <i class="fa-solid fa-sync-alt"></i> 刷新列表
+                </button>
+            </div>
+        </div>
+    </div>
+
     <script src="js/main.js" type="module"></script>
+    <!-- chess.js for SAN move validation and parsing -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.3/chess.min.js"></script>
 </body>
 </html>

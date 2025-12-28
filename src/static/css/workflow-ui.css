@@ -1,0 +1,256 @@
+/* 取消摘要样式 */
+.cancellation-summary {
+    background: #fff3cd;
+    border: 1px solid #ffeaa7;
+    border-radius: 8px;
+    padding: 16px;
+    margin: 16px 0;
+}
+
+.cancellation-summary .summary-header {
+    display: flex;
+    align-items: center;
+    margin-bottom: 12px;
+}
+
+.cancellation-summary .summary-header .icon {
+    font-size: 1.5em;
+    margin-right: 8px;
+}
+
+.cancellation-summary .summary-header h4 {
+    margin: 0;
+    color: #856404;
+}
+
+.cancellation-summary .summary-progress {
+    margin-bottom: 12px;
+    font-weight: 500;
+}
+
+.cancellation-summary .completed-steps {
+    margin-bottom: 12px;
+}
+
+.cancellation-summary .completed-steps ul {
+    margin: 8px 0 0 0;
+    padding-left: 20px;
+}
+
+.cancellation-summary .completed-steps li {
+    margin: 4px 0;
+    font-size: 0.9em;
+}
+
+.cancellation-summary .partial-results {
+    margin-bottom: 16px;
+}
+
+.cancellation-summary .results-preview {
+    max-height: 200px;
+    overflow-y: auto;
+    background: #f8f9fa;
+    border: 1px solid #dee2e6;
+    border-radius: 4px;
+    padding: 8px;
+    margin-top: 8px;
+}
+
+.cancellation-summary .results-preview details {
+    margin-bottom: 8px;
+}
+
+.cancellation-summary .results-preview summary {
+    cursor: pointer;
+    font-weight: 500;
+}
+
+.cancellation-summary .results-preview pre {
+    background: white;
+    padding: 8px;
+    border-radius: 4px;
+    margin: 8px 0 0 0;
+    font-size: 0.8em;
+    white-space: pre-wrap;
+    word-break: break-all;
+}
+
+.cancellation-summary .cancellation-actions {
+    display: flex;
+    gap: 8px;
+    justify-content: flex-end;
+}
+
+.cancellation-summary .btn-view-details {
+    background: #17a2b8;
+    color: white;
+    border: none;
+    padding: 6px 12px;
+    border-radius: 4px;
+    cursor: pointer;
+}
+
+.cancellation-summary .btn-close {
+    background: #6c757d;
+    color: white;
+    border: none;
+    padding: 6px 12px;
+    border-radius: 4px;
+    cursor: pointer;
+}
+
+/* 移动端适配 */
+@media (max-width: 767px) {
+    .cancellation-summary {
+        padding: 12px;
+    }
+    
+    .cancellation-summary .cancellation-actions {
+        flex-direction: column;
+    }
+    
+    .cancellation-summary .results-preview {
+        max-height: 150px;
+    }
+}
+/* 确保Agent容器默认完全隐藏且不影响布局 */
+#agent-thinking-container {
+    display: none !important;
+    position: fixed !important;
+    border: none !important;
+    outline: none !important;
+    box-shadow: none !important;
+    background: transparent !important;
+    margin: 0 !important;
+    padding: 0 !important;
+}
+
+/* 只有在显示时才应用样式 */
+#agent-thinking-container[style*="display: block"] {
+    display: block !important;
+    /* 其他样式由JS动态注入的CSS控制 */
+}
+
+/* Agent消息样式 */
+.message.agent-thinking,
+.message.agent-step,
+.message.agent-final-answer,
+.message.agent-error {
+    border-left: 4px solid #6366f1;
+    background: #f8fafc;
+}
+
+.message.agent-thinking .agent-thinking-header,
+.message.agent-step .agent-step-header,
+.message.agent-final-answer .agent-final-header,
+.message.agent-error .agent-error-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+    padding-bottom: 4px;
+    border-bottom: 1px solid #e2e8f0;
+}
+
+.agent-badge, .step-type, .final-badge, .error-badge {
+    background: #6366f1;
+    color: white;
+    padding: 2px 8px;
+    border-radius: 12px;
+    font-size: 0.8em;
+    font-weight: bold;
+}
+
+.iteration-badge, .tool-badge, .iterations-info, .iteration-info {
+    background: #94a3b8;
+    color: white;
+    padding: 2px 6px;
+    border-radius: 8px;
+    font-size: 0.75em;
+}
+
+.parameters-details {
+    margin-top: 8px;
+}
+
+.parameters-details summary {
+    cursor: pointer;
+    font-weight: bold;
+    color: #475569;
+}
+
+.parameters-details pre {
+    background: #f1f5f9;
+    padding: 8px;
+    border-radius: 4px;
+    margin-top: 4px;
+    font-size: 0.9em;
+    overflow-x: auto;
+}
+
+.observation-result.success {
+    color: #059669;
+}
+
+.observation-result.error {
+    color: #dc2626;
+}
+
+.output-text {
+    margin-top: 4px;
+    white-space: pre-wrap;
+}
+
+.message.system.agent-start,
+.message.system.agent-complete {
+    background: #eff6ff;
+    border-left: 4px solid #3b82f6;
+}
+
+.agent-start-header,
+.agent-complete-header {
+    font-weight: bold;
+    color: #1e40af;
+    margin-bottom: 8px;
+}
+
+.agent-title, .complete-badge {
+    background: #3b82f6;
+    color: white;
+    padding: 4px 12px;
+    border-radius: 16px;
+    font-size: 0.9em;
+}
+
+/* Agent执行摘要样式 */
+.agent-execution-summary {
+    background: #f0f9ff;
+    border: 1px solid #bae6fd;
+    border-radius: 8px;
+    padding: 12px;
+    margin: 8px 0;
+    font-size: 0.9em;
+}
+
+.summary-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 6px;
+    color: #0369a1;
+}
+
+.summary-details {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 4px;
+    color: #475569;
+    font-size: 0.85em;
+}
+
+.summary-note {
+    color: #64748b;
+    font-size: 0.8em;
+    font-style: italic;
+}

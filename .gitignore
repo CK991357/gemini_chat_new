@@ -173,12 +173,19 @@ dist
 .wrangler/
 deno.lock
 
-/项目信息
+/项目信息_非实现
 .vscode/launch.json
 
 /docs
-/gemini_chat_vue
 
-# Ignore compiled CSS files from SCSS
-src/static/css/style.css
-src/static/css/style.css.map
+/specs_framework
+/specs
+/.kilocode
+
+/.claude
+bmain.js
+
+/mcp
+
+/backendserver_Tools
+

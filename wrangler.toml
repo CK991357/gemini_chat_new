@@ -1,5 +1,5 @@
 #:schema node_modules/wrangler/config-schema.json
-name = "gemini-chat-new"
+name = "gemini-chat"
 main = "src/worker.js"
 compatibility_date = "2024-12-30"
 compatibility_flags = ["nodejs_compat"]
@@ -115,3 +115,18 @@ enabled = true
 # [[vectorize]]
 # binding = "MY_INDEX"
 # index_name = "my-index"
+
+[[kv_namespaces]]
+binding = "GEMINICHAT_HISTORY_KV"
+id = "f64330e7c00f48e6893f0bf8625106c1"
+preview_id = "f64330e7c00f48e6893f0bf8625106c1"
+
+[[d1_databases]]
+binding = "CHAT_DB"
+database_name = "gemini-chat-db" 
+database_id = "917c2582-af7a-4241-b367-aaea88b9f2ed"
+
+[env.production]
+d1_databases = [
+  { binding = "CHAT_DB", database_name = "gemini-chat-db", database_id = "917c2582-af7a-4241-b367-aaea88b9f2ed" }
+]
